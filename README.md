@@ -1,209 +1,175 @@
 # Proyecto: Buscador de vehículos de segunda mano (España)
 
-## Objetivo
+Buscador de coches de segunda mano que agrega anuncios de **Wallapop** mediante su
+API interna y los expone a través de una **API propia**, consultando **en tiempo real**
+y **sin base de datos**.
 
-Construir un buscador de vehículos de segunda mano que agregue anuncios de diferentes plataformas, comenzando exclusivamente por **Wallapop**, con una arquitectura escalable que permita añadir nuevos proveedores en el futuro (Coches.net, Milanuncios, etc.).
-
----
-
-# Requisitos
-
-## Fuente de datos
-
-- Utilizar la **API interna de Wallapop** en lugar de hacer scraping del HTML.
-- Evitar Selenium, Playwright o scraping visual siempre que sea posible.
-- Obtener los datos directamente en formato JSON.
-- Investigar y reutilizar proyectos Open Source existentes que ya implementen la comunicación con la API.
+> Rediseño v2: se elimina PostgreSQL, Prisma, Redis y el job de sincronización.
+> La simplicidad es la arquitectura: cada búsqueda se resuelve contra Wallapop en el momento.
 
 ---
 
-## Open Source
-
-Evaluar proyectos como:
-
-- wallapop-api
-- wallapop-cli
-- wallaparser
-
-No se trata de copiar el proyecto completo, sino de:
-
-- comprender el funcionamiento de la API interna;
-- reutilizar únicamente la capa de comunicación si aporta valor;
-- desarrollar el resto de la arquitectura desde cero.
-
----
-
-# Arquitectura
+## Arquitectura
 
 ```text
-                Frontend
-                    │
-                    ▼
-              API Propia (Backend)
-                    │
-      ┌─────────────┴─────────────┐
-      │                           │
-      ▼                           ▼
- Cliente Wallapop           Base de datos
-(API interna JSON)         PostgreSQL
-      │                           ▲
-      └─────────────┬─────────────┘
-                    │
-          Normalización de datos
+   Vue 3 (Vite, SPA estática)
+            │
+            ▼
+   API propia (FastAPI, Python)
+    - valida y normaliza filtros
+    - cachea taxonomía marca/modelo
+            │
+            ▼
+   Wallapop (API interna JSON, sin scraping HTML)
 ```
+
+- El frontend **nunca** consulta Wallapop directamente.
+- Sin BD: no hay persistencia de anuncios, ni sincronización, ni estados `removed`.
+- Los resultados son siempre "vivos": lo que devuelve Wallapop en ese instante.
 
 ---
 
-# Funcionalidades
+## Evaluación: `davstr1/wallapop-api`
 
-## Búsqueda
+Se evalúa [davstr1/wallapop-api](https://github.com/davstr1/wallapop-api) como base
+para la comunicación con Wallapop.
 
-- Marca
-- Modelo
-- Precio mínimo
-- Precio máximo
-- Kilómetros
-- Año
+**Decisión: usarlo como referencia/documentación, no como dependencia en runtime.**
+
+Motivos:
+
+| Aspecto | Valoración |
+|---|---|
+| Lenguaje | Node.js/TypeScript. Nuestro backend es Python/FastAPI → no usable como librería |
+| Aporte real | Documenta la ingeniería inversa: endpoints, headers mínimos y *gotchas* |
+| Alternativa descartada | Ejecutar su servidor Express como sidecar: añade un proceso y un despliegue más, contrario al objetivo de simplificar |
+| Portabilidad | Su cliente son ~100 líneas de lógica HTTP → trivial portarlo a `httpx` |
+
+Hallazgos técnicos que adoptamos:
+
+- La API pública de Wallapop solo exige dos cabeceras: `Host: api.wallapop.com` y
+  `X-DeviceOS: 0`. **No hay firma HMAC** (`X-Signature`) como se asumía en la spec v1.
+- Endpoints útiles: `/api/v3/search`, `/api/v3/items/{id}`, `/api/v3/categories`.
+- *Gotchas* documentados:
+  - **Proxy**: Wallapop bloquea peticiones directas desde IPs de datacenter (afecta al
+    deploy del backend; en local suele funcionar). Variable `PROXY_URL` soportada.
+  - **Precios inconsistentes**: `/search` devuelve euros; `/items/{id}` devuelve céntimos.
+  - **Paginación**: tokens opacos JWT (`next_page`), no números de página.
+  - **Throttling**: si >95% de respuestas son 404, es rate-limiting, no 404s reales.
+  - `step=1` y `source=keywords` son obligatorios en búsqueda o devuelve vacío.
+
+---
+
+## Funcionalidades
+
+### Búsqueda
+
+Filtros nativos de la categoría coches de Wallapop (`category_id=100`):
+
+- Marca y modelo (taxonomía capturada: 96 marcas, ver `docs/wallapop-car-taxonomy-capture.json`)
+- Precio mínimo / máximo
+- Kilometraje máximo
+- Año mínimo / máximo
 - Combustible
-- Cambio automático/manual
-- Provincia
-- Distancia
-- Ordenar por:
-  - Más recientes
-  - Precio
-  - Kilómetros
+- Cambio (manual / automático)
+- Carrocería, potencia (CV), tipo de vendedor
+- Provincia (+ distancia)
+- Texto libre (keywords)
+- Ordenar por: más recientes, precio, relevancia
+
+### Anuncio
+
+Título, descripción, precio, marca, modelo, año, kilómetros, combustible, cambio,
+potencia, carrocería, provincia, coordenadas, fecha de publicación, imágenes,
+vendedor y URL al anuncio original en Wallapop.
 
 ---
 
-## Datos almacenados
+## Stack
 
-Cada anuncio deberá contener como mínimo:
-
-- ID del anuncio
-- Título
-- Descripción
-- Precio
-- Marca
-- Modelo
-- Año
-- Kilómetros
-- Combustible
-- Cambio
-- Potencia
-- Provincia
-- Coordenadas
-- Fecha de publicación
-- URL del anuncio
-- Imágenes
-- Estado del anuncio
-- Usuario/Vendedor
+| Capa | Tecnología |
+|---|---|
+| Backend | Python 3.12 + FastAPI + Pydantic + httpx |
+| Frontend | Vue 3 + Vite + TypeScript + Tailwind CSS + Vue Router |
+| Persistencia | **Ninguna** (opcionalmente caché TTL en memoria para taxonomía/búsquedas repetidas) |
+| Despliegue | Frontend: hosting estático (GitHub Pages / Netlify). Backend: Render / Fly.io (free tier) |
 
 ---
 
-# Base de datos
+## Estructura
 
-Guardar únicamente los anuncios necesarios.
+```text
+api/                      # FastAPI
+└── app/
+    ├── main.py           # entrypoint
+    ├── config.py         # settings (pydantic-settings)
+    ├── routes/           # /search, /listings, /meta
+    ├── wallapop/         # client.py, mapper.py, types.py
+    ├── geo/              # provincia → lat/lon (tabla estática)
+    └── providers.py      # protocolo VehicleProvider (escalabilidad futura)
 
-Actualizar:
-
-- anuncios nuevos;
-- anuncios modificados;
-- anuncios eliminados.
-
-Evitar duplicados mediante el ID del anuncio.
-
----
-
-# Caché
-
-Implementar una capa de caché para:
-
-- reducir llamadas a Wallapop;
-- acelerar las búsquedas;
-- evitar bloqueos por exceso de peticiones.
-
----
-
-# API propia
-
-El frontend nunca consultará directamente Wallapop.
-
-Toda la información pasará por una API propia.
-
-Ejemplo:
-
-GET /cars
-
-GET /cars/{id}
-
-GET /search?brand=BMW&model=320d
-
----
-
-# Escalabilidad
-
-La arquitectura debe permitir añadir nuevos proveedores creando únicamente un nuevo adaptador.
-
-Ejemplo:
-
-```
-Provider
- ├── Wallapop
- ├── Coches.net
- ├── Milanuncios
- ├── AutoScout24
- └── Mobile.de
+web/                      # Vue 3 + Vite
+└── src/
+    ├── pages/            # SearchPage, ListingDetailPage
+    ├── components/       # SearchFilters, ListingCard, ListingGrid
+    ├── data/brands.json  # taxonomía marca→modelo (captura estática)
+    └── api/client.ts     # fetch wrapper hacia la API propia
 ```
 
-Cada proveedor implementará la misma interfaz.
+---
+
+## API propia
+
+```text
+GET /api/v1/search?brand=BMW&model=320d&priceMax=15000&province=Madrid&sortBy=recent
+GET /api/v1/listings/{id}
+GET /api/v1/meta/brands        # taxonomía marca→modelo para los selects
+GET /health
+```
+
+La paginación usa un cursor opaco: la respuesta incluye `nextCursor` y el frontend
+lo reenvía como `cursor` en la siguiente página (Wallapop pagina con tokens JWT).
+
+Documentación interactiva automática: `/docs` (Swagger UI de FastAPI).
 
 ---
 
-# Tecnologías
+## Desarrollo local
 
-Backend
+```bash
+# Backend
+cd api
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload          # http://localhost:8000/docs
 
-- Node.js
-- TypeScript
-- Express o Fastify
+# Frontend
+cd web
+npm install
+npm run dev                            # http://localhost:5173
+```
 
-Base de datos
+Variables de entorno:
 
-- PostgreSQL
+```bash
+# api/.env
+PORT=8000
+CORS_ORIGIN=http://localhost:5173
+PROXY_URL=              # opcional; necesario si el host tiene IP de datacenter bloqueada
+LOG_LEVEL=info
 
-ORM
-
-- Prisma
-
-Caché
-
-- Redis
-
-Frontend
-
-- React
-- Next.js
-
----
-
-# Objetivos técnicos
-
-- Arquitectura limpia.
-- Código modular.
-- Separación entre dominio e infraestructura.
-- Adaptadores para cada marketplace.
-- Sistema de actualización incremental.
-- API REST documentada.
-- Fácil incorporación de nuevas fuentes de datos.
+# web/.env
+VITE_API_BASE_URL=http://localhost:8000
+```
 
 ---
 
-# Valor del proyecto
+## Roadmap (fuera de alcance actual)
 
-El valor del proyecto no reside en desarrollar un scraper desde cero, sino en construir una plataforma robusta capaz de:
+- Segundo proveedor (Coches.net, Milanuncios…) implementando `VehicleProvider`
+- Caché Redis compartida entre instancias
+- Favoritos, alertas de nuevos anuncios, autenticación
+- Búsqueda geoespacial por radio (hoy: distancia simple sobre lat/lon de provincia)
+- Sincronización dinámica de la taxonomía de marcas/modelos
 
-- integrar múltiples marketplaces;
-- normalizar datos heterogéneos;
-- mantener una base de datos consistente;
-- ofrecer búsquedas rápidas;
-- ser fácilmente escalable mediante nuevos adaptadores.
+Ver especificación completa en [`docs/specs-1.md`](docs/specs-1.md).
