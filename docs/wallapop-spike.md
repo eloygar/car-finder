@@ -40,6 +40,10 @@ Sin HMAC, sin User-Agent obligatorio. `step=1&source=keywords` no son obligatori
 }
 ```
 
+En la captura real del pipeline del 25-08-2026, `type_attributes` llegó en formato
+plano (`brand: "Toyota"`, `year: 2019`, `km: 62500`, `horsepower: 122`). El mapper
+acepta también el formato histórico `{ "value": ... }` mostrado por `/items/{id}`.
+
 - `category_id=100` correcto (`category_ids` no funciona).
 - `items` 40 por defecto. `limit` no respeta (siempre 40). Paginación vía `next_page` JWT (decoded sin verificar = `{searchRequestParams, nextPageParams:{offset, blending_page_initial_offset, step, ...}, exp}`).
 - Siguiente página: `?next_page=<JWT>` (con mismo `category_id` y demás params).
@@ -84,11 +88,11 @@ Sin HMAC, sin User-Agent obligatorio. `step=1&source=keywords` no son obligatori
 | Listing | Search `type_attributes`/location/price | Items `type_attributes` map |
 |---------|------------------------------------------|-------------------------------|
 | price | `price.amount` EUR | `price.cash.amount` EUR — misma unidad, no céntimos |
-| brand/model/year/km | `type_attributes.brand/model/year/km.value` | igual |
-| fuel | `type_attributes.engine.value` → gasoil/gasoline mapping | igual |
-| transmission | `gear_box` → manual/automatic | igual |
-| power | `horse_power.value` | igual |
-| body | `body_type.value` | igual |
+| brand/model/year/km | `type_attributes.brand/model/year/km` | campos `.value` históricos |
+| fuel | `type_attributes.engine` | `engine.value` histórico |
+| transmission | `gear_box` → manual/automatic | `gear_box.value` histórico |
+| power | `horsepower` | `horse_power.value` histórico |
+| body | `body_type` | `body_type.value` histórico |
 | province/city | `location.city` + `location.region2` (= provincia) + lat/lon | igual |
 | images | `images[].urls.big/medium` | igual |
 | url | `https://wallapop.com/item/{slug or web_slug}` | `share_url` |
@@ -122,6 +126,7 @@ Wallapop resuelve ubicación por coordenadas, no por string city. Para replicar 
 ## Próximos pasos mapper
 
 - Parsear `data.section.payload.items` como lista base.
-- `type_attributes.<key>.value` es string siempre, convertir a int/float donde toca.
+- Aceptar atributos planos y el formato histórico `type_attributes.<key>.value`;
+  convertir a int/float donde toca.
 - `location` con ciudad/provincia/lat/lon.
 - `meta.next_page` → `nextCursor`.

@@ -6,6 +6,7 @@ dist/
 coverage/
 web/dist/
 api/src/generated/
+prisma/generated/
 
 # Local configuration and logs
 .env

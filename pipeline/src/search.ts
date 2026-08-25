@@ -10,7 +10,6 @@ import { SEARCHES, type SearchDefinition } from './config/searches.js';
 import { WallapopClient } from './wallapop/WallapopClient.js';
 import type { RawWallapopItem, WallapopSearchParams } from './wallapop/types.js';
 
-const DEFAULT_MAX_PAGES = 3;
 const DEFAULT_OUTPUT = 'output/raw-listings.json';
 const CAR_CATEGORY_ID = 100;
 
@@ -28,7 +27,7 @@ export interface BatchLogger {
 }
 
 export interface CliOptions {
-  maxPages: number;
+  maxPages?: number;
   only?: string;
   outputPath: string;
 }
@@ -36,7 +35,7 @@ export interface CliOptions {
 export async function runSearchBatch(options: {
   client: SearchPageClient;
   searches: readonly SearchDefinition[];
-  maxPages: number;
+  maxPages?: number;
   logger: BatchLogger;
 }): Promise<RawWallapopItem[]> {
   const uniqueItems = new Map<string, RawWallapopItem>();
@@ -45,7 +44,7 @@ export async function runSearchBatch(options: {
     let nextPage: string | undefined;
     const observedCursors = new Set<string>();
 
-    for (let pageNumber = 1; pageNumber <= options.maxPages; pageNumber += 1) {
+    for (let pageNumber = 1; ; pageNumber += 1) {
       const page = await options.client.searchPage({
         brand: search.brand,
         categoryId: CAR_CATEGORY_ID,
@@ -80,7 +79,7 @@ export async function runSearchBatch(options: {
       }
       observedCursors.add(page.nextCursor);
 
-      if (pageNumber === options.maxPages) {
+      if (options.maxPages !== undefined && pageNumber >= options.maxPages) {
         options.logger.info(
           { searchId: search.id, maxPages: options.maxPages },
           'Configured page limit reached',
@@ -96,7 +95,7 @@ export async function runSearchBatch(options: {
 }
 
 export function parseCliArgs(args: readonly string[], cwd = process.cwd()): CliOptions {
-  let maxPages = DEFAULT_MAX_PAGES;
+  let maxPages: number | undefined;
   let only: string | undefined;
   let outputPath = path.resolve(cwd, DEFAULT_OUTPUT);
   const firstArgumentIndex = args[0] === '--' ? 1 : 0;
@@ -126,7 +125,11 @@ export function parseCliArgs(args: readonly string[], cwd = process.cwd()): CliO
     }
   }
 
-  return { maxPages, outputPath, ...(only ? { only } : {}) };
+  return {
+    outputPath,
+    ...(maxPages !== undefined ? { maxPages } : {}),
+    ...(only ? { only } : {}),
+  };
 }
 
 export async function writeJsonAtomically(
@@ -171,7 +174,7 @@ async function main(): Promise<void> {
     const items = await runSearchBatch({
       client,
       searches,
-      maxPages: cliOptions.maxPages,
+      ...(cliOptions.maxPages !== undefined ? { maxPages: cliOptions.maxPages } : {}),
       logger,
     });
     await writeJsonAtomically(cliOptions.outputPath, items);
@@ -235,7 +238,7 @@ function usage(): string {
     'Usage: pnpm pipeline:search -- [options]',
     '',
     'Options:',
-    '  --max-pages <n>    Maximum pages per configured search (default: 3)',
+    '  --max-pages <n>    Optional page cap; default is all pages until cursor exhaustion',
     '  --only <search-id> Run one configured search',
     '  --output <path>    Output JSON path (default: output/raw-listings.json)',
     '  --help             Show this help',

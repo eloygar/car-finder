@@ -68,7 +68,8 @@ de la base de datos a través de la API propia.
 │                    │                                                   │
 │  2. reconcile → pipeline/reconcile.ts                                 │
 │     Compara contra BD por externalId + contentHash                    │
-│     → clasifica: nuevo / cambiado / sin cambios / desaparecido        │
+│     → clasifica: nuevo / cambiado / sin cambios                       │
+│     → "desaparecido" se difiere hasta tener barridos completos       │
 │                    │                                                   │
 │  3. classify → pipeline/classify.ts                                   │
 │     Solo anuncios nuevos/cambiados                                    │
@@ -182,7 +183,7 @@ model Listing {
 
   // Estado / reconciliación
   status                String    @default("active") // active | unavailable
-  contentHash           String    // hash(title+description+price), detecta ediciones
+  contentHash           String    // hash de las entradas usadas por la clasificación
   firstSeenAt           DateTime  @default(now())
   lastSeenAt            DateTime  @updatedAt
   rawPayload            Json?
@@ -220,10 +221,10 @@ model KnownIssue {
 
 Reglas:
 - Anti-duplicados por `[provider, externalId]`.
-- No hay borrado físico. `status = "unavailable"` cuando un anuncio deja de aparecer
-  en un barrido de búsqueda.
-- `contentHash` es la clave para decidir si re-clasificar: si no cambió, no se
-  vuelve a llamar a la IA (ahorra coste).
+- No hay borrado físico. El estado `unavailable` se utilizará cuando una captura
+  futura pueda demostrar que el anuncio dejó de aparecer en un barrido completo.
+- `contentHash` cubre título, descripción, precio, marca, modelo y año. Es la clave
+  para decidir si re-clasificar: si no cambió, no se vuelve a llamar a la IA.
 - `KnownIssue` se siembra manualmente con un seed de 20-30 filas curadas a mano para
   el MVP — no hay integración con una API externa real de fiabilidad de coches.
 
@@ -241,8 +242,8 @@ Reglas:
     `WallapopClient.ts` para poder ajustarla si Wallapop cambia el algoritmo.
   - Rate limiting: pocas requests por segundo, backoff exponencial ante 429/403.
   - Sin Selenium/Playwright — solo HTTP + JSON.
-- Cada búsqueda se pagina hasta agotar resultados (o hasta un límite configurable de
-  páginas, para no disparar el volumen en el MVP).
+- Cada búsqueda se pagina por defecto hasta que Wallapop deje de devolver cursor. Se
+  puede indicar un límite explícito de páginas para pruebas o para acotar volumen.
 - Salida: no escribe directamente en BD — pasa el array de JSON crudo a la fase de
   reconciliación (puede hacerse como pipeline en memoria dentro del mismo comando,
   o guardando un fichero intermedio `output/raw-listings.json` para poder inspeccionar
@@ -254,15 +255,17 @@ Reglas:
 
 - CLI: `pnpm pipeline:reconcile`
 - Por cada anuncio crudo:
-  - Calcula `contentHash` = hash de `title + description + price`.
+  - Calcula `contentHash` = SHA-256 normalizado de título, descripción, precio,
+    marca, modelo y año (todas las entradas relevantes para la clasificación).
   - Si `externalId` no existe en BD → marca como **nuevo** (pendiente de clasificar).
   - Si existe y el hash coincide → solo actualiza `lastSeenAt`, sin reclasificar.
   - Si existe y el hash difiere → actualiza campos base y marca como **pendiente de
     reclasificación** (borra los campos de clasificación o los deja pero con
     `classificationVersion` desactualizada, a decidir en implementación).
-- Al terminar el barrido completo de una combinación marca/provincia: cualquier
-  `Listing` de esa combinación con `lastSeenAt` anterior al inicio del barrido actual
-  → `status = "unavailable"`.
+- El MVP inicial de reconciliación no marca ausentes como `unavailable`: el fichero
+  de fase 1 es un array deduplicado y puede estar limitado por páginas, así que la
+  ausencia no demuestra que el anuncio haya desaparecido. Esta transición se difiere
+  hasta que fase 1 emita metadatos de alcance y finalización por búsqueda.
 - Los "nuevos" y "pendientes de reclasificación" quedan identificados (por ejemplo,
   `classifiedAt IS NULL` o `classificationVersion` distinta de la versión vigente)
   para que la fase 3 los recoja.
@@ -484,8 +487,8 @@ VITE_API_BASE_URL=https://<tu-api>.onrender.com
 
 - [ ] `pnpm pipeline:search` obtiene anuncios reales de Wallapop para las
       combinaciones configuradas.
-- [ ] `pnpm pipeline:reconcile` detecta correctamente anuncios nuevos, sin cambios,
-      modificados y desaparecidos, sin duplicados.
+- [ ] `pnpm pipeline:reconcile` detecta correctamente anuncios nuevos, sin cambios y
+      modificados, sin duplicados; no infiere desapariciones desde capturas limitadas.
 - [ ] `pnpm pipeline:classify` clasifica anuncios pendientes usando el servidor MCP
       real y dejar constancia de `classificationVersion` y `classifiedAt`.
 - [ ] La tool `check_known_issues` es invocada de verdad por el modelo (verificable

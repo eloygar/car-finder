@@ -54,7 +54,7 @@ describe('runSearchBatch', () => {
       { items: [third] },
     );
 
-    const result = await runSearchBatch({ client, searches, maxPages: 3, logger });
+    const result = await runSearchBatch({ client, searches, logger });
 
     expect(result).toEqual([first, second, third]);
     expect(result[0]).toBe(first);
@@ -120,7 +120,6 @@ describe('runSearchBatch', () => {
 describe('parseCliArgs', () => {
   it('uses stable defaults', () => {
     expect(parseCliArgs([], '/work')).toEqual({
-      maxPages: 3,
       outputPath: path.resolve('/work/output/raw-listings.json'),
     });
   });

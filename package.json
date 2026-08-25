@@ -4,20 +4,33 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "prisma generate",
     "pipeline:search": "tsx pipeline/src/search.ts",
+    "pipeline:reconcile": "tsx pipeline/src/reconcile.ts",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
     "axios": "^1.13.5",
+    "dotenv": "^17.4.2",
     "https-proxy-agent": "^7.0.6",
+    "pg": "^8.23.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "@types/pg": "^8.23.1",
+    "prisma": "7.9.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

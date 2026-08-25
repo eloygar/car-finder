@@ -1,0 +1,68 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "./generated/client"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Listing {
+  id           String    @id @default(uuid())
+  externalId   String
+  provider     String    @default("wallapop")
+  title        String
+  description  String?
+  price        Decimal   @db.Decimal(12, 2)
+  brand        String
+  model        String
+  year         Int?
+  mileage      Int?
+  fuelType     String?
+  transmission String?
+  power        Int?
+  bodyType     String?
+  province     String?
+  latitude     Float?
+  longitude    Float?
+  url          String
+  images       String[]
+  publishedAt  DateTime?
+  sellerType   String?
+  sellerName   String?
+
+  status      String   @default("active")
+  contentHash String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  rawPayload  Json?
+
+  isDamaged             Boolean?
+  damageConfidence      String?
+  repairCostEstimate    String?
+  repairCostReasoning   String?
+  knownIssues           Boolean?
+  knownIssuesDetail     String?
+  classificationVersion String?
+  classifiedAt          DateTime?
+
+  @@unique([provider, externalId])
+  @@index([brand, model])
+  @@index([province])
+  @@index([price])
+  @@index([status])
+}
+
+model KnownIssue {
+  id               String  @id @default(uuid())
+  brand            String
+  model            String
+  yearFrom         Int?
+  yearTo           Int?
+  issueDescription String
+  severity         String
+  source           String?
+
+  @@index([brand, model])
+}
