@@ -51,7 +51,12 @@ export async function executeLocalSearch(
   const definition: SearchDefinition = {
     id: `ui-${request.brand.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${location.id}`,
     brand: request.brand,
+    ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.transmission ? { transmission: request.transmission } : {}),
+    ...(request.bodyType ? { bodyType: request.bodyType } : {}),
+    ...(request.price?.min !== undefined ? { priceMin: request.price.min } : {}),
+    ...(request.price?.max !== undefined ? { priceMax: request.price.max } : {}),
     location: { ...location, distanceMeters: request.distanceMeters },
   };
   const client = dependencies.client ?? createLocalWallapopClient(logger);

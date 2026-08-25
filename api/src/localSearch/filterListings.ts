@@ -8,9 +8,6 @@ export function filterRawListings(
   return items.filter((item) => {
     const attributes = record(item.type_attributes) ?? {};
     return matchesText(attribute(attributes, 'model'), filters.model)
-      && matchesText(attribute(attributes, 'engine'), filters.engine)
-      && matchesText(attribute(attributes, 'gear_box'), filters.transmission)
-      && matchesText(attribute(attributes, 'body_type'), filters.bodyType)
       && matchesRange(priceAmount(item.price), filters.price)
       && matchesRange(numeric(attribute(attributes, 'year')), filters.year)
       && matchesRange(numeric(attribute(attributes, 'km')), filters.mileage);

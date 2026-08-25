@@ -30,11 +30,13 @@ This builds the frontend and serves both the UI and API from
 
 ## Filter behavior
 
-Brand, location, radius, and fuel are sent to Wallapop. Model, price, year,
-mileage, transmission, and body style are applied to the captured payloads
-locally because the current search protocol does not expose stable query fields
-for all of them. Select values come from the committed taxonomy capture in
-`docs/wallapop-car-taxonomy-capture.json`.
+Brand, model, location, radius, fuel, transmission, body style, and price are
+sent to Wallapop with their verified native query names. Year and mileage are
+applied to the captured payloads locally because the current search protocol
+does not expose stable query fields for them. Native filters are not reapplied
+to compact search items because those payloads often omit transmission and body
+attributes even when the upstream filter was applied. Select values come from
+the committed taxonomy capture in `docs/wallapop-car-taxonomy-capture.json`.
 
 Only one UI search runs at a time. A failed or incomplete search leaves the
 previous output file untouched. The result preview is capped at 100 cards, but
@@ -44,7 +46,9 @@ The API reuses one Wallapop client while it is running, so the one-second
 minimum request interval also applies between consecutive UI searches. Eligible
 403, 429, timeout, network, and 5xx failures are retried before the UI receives
 a safe error describing whether Wallapop rate limiting, availability, protocol,
-or the local capture caused the failure.
+or the local capture caused the failure. Transient HTTP 200 responses with a
+malformed search envelope are retried as well; Wallapop can emit one near the
+end of long cursor chains before returning the valid empty terminal page.
 
 Reconciliation starts only after the capture has completed and its JSON file
 has been replaced successfully. If PostgreSQL is unavailable, the valid capture

@@ -47,7 +47,12 @@ export async function runSearchBatch(options: {
     for (let pageNumber = 1; ; pageNumber += 1) {
       const page = await options.client.searchPage({
         brand: search.brand,
+        ...(search.model ? { model: search.model } : {}),
         ...(search.engine ? { engine: search.engine } : {}),
+        ...(search.transmission ? { transmission: search.transmission } : {}),
+        ...(search.bodyType ? { bodyType: search.bodyType } : {}),
+        ...(search.priceMin !== undefined ? { priceMin: search.priceMin } : {}),
+        ...(search.priceMax !== undefined ? { priceMax: search.priceMax } : {}),
         categoryId: CAR_CATEGORY_ID,
         latitude: search.location.latitude,
         longitude: search.location.longitude,

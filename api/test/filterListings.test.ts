@@ -36,7 +36,7 @@ const matching = {
 };
 
 describe('local search listing filters', () => {
-  it('applies model, taxonomy values, and numeric ranges', () => {
+  it('applies model and numeric ranges available in search payloads', () => {
     const rejected = [
       { ...matching, id: 'wrong-model', type_attributes: { ...matching.type_attributes, model: 'Yaris' } },
       { ...matching, id: 'too-expensive', price: { amount: 30_000, currency: 'EUR' } },
@@ -47,6 +47,20 @@ describe('local search listing filters', () => {
     expect(filterRawListings([matching, ...rejected], filters).map(({ id }) => id)).toEqual([
       'car-1',
     ]);
+  });
+
+  it('does not discard native-filtered results when compact payloads omit those attributes', () => {
+    const compact = {
+      ...matching,
+      type_attributes: {
+        brand: 'Toyota',
+        model: 'Corolla',
+        year: 2021,
+        km: 72_000,
+      },
+    };
+
+    expect(filterRawListings([compact], filters)).toEqual([compact]);
   });
 
   it('accepts legacy nested attributes and builds a compact result projection', () => {

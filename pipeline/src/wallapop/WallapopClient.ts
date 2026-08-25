@@ -1,8 +1,6 @@
 import axios, {
-  AxiosError,
   type AxiosInstance,
   type AxiosRequestConfig,
-  type AxiosResponse,
 } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
@@ -114,24 +112,24 @@ export class WallapopClient {
       distance: params.distance,
     };
 
-    if (params.engine) {
-      query.engine = params.engine;
-    }
+    if (params.model) query.model = params.model;
+    if (params.engine) query.engine = params.engine;
+    if (params.transmission) query.gearbox = params.transmission;
+    if (params.bodyType) query.body_type = params.bodyType;
+    if (params.priceMin !== undefined) query.min_sale_price = params.priceMin;
+    if (params.priceMax !== undefined) query.max_sale_price = params.priceMax;
 
     if (params.nextPage) {
       query.next_page = params.nextPage;
     }
 
-    const response = await this.requestWithRetry(() =>
-      this.http.get<unknown>(SEARCH_PATH, { params: query }),
-    );
-
-    return parseSearchResponse(response.data);
+    return this.requestWithRetry(async () => {
+      const response = await this.http.get<unknown>(SEARCH_PATH, { params: query });
+      return parseSearchResponse(response.data);
+    });
   }
 
-  private async requestWithRetry(
-    request: () => Promise<AxiosResponse<unknown>>,
-  ): Promise<AxiosResponse<unknown>> {
+  private async requestWithRetry<T>(request: () => Promise<T>): Promise<T> {
     for (let attempt = 0; ; attempt += 1) {
       await this.waitForRateLimit();
 
@@ -145,13 +143,15 @@ export class WallapopClient {
         const retryDelay = getRetryAfterMs(error, this.now());
         const exponentialDelay = 1_000 * 2 ** attempt + Math.floor(this.random() * 250);
         const delayMs = retryDelay ?? exponentialDelay;
-        const axiosError = error as AxiosError;
+        const axiosError = axios.isAxiosError(error) ? error : undefined;
 
         this.onRetry?.({
           attempt: attempt + 1,
           delayMs,
-          status: axiosError.response?.status,
-          code: axiosError.code,
+          status: axiosError?.response?.status,
+          code: error instanceof MalformedWallapopResponseError
+            ? 'MALFORMED_RESPONSE'
+            : axiosError?.code,
         });
         await this.sleep(delayMs);
       }
@@ -174,7 +174,7 @@ export class WallapopClient {
 
 function parseSearchResponse(payload: unknown): WallapopSearchPage {
   if (!isRecord(payload)) {
-    throw new Error('Malformed Wallapop response: expected an object');
+    throw malformed('expected an object');
   }
 
   const data = payload.data;
@@ -183,12 +183,12 @@ function parseSearchResponse(payload: unknown): WallapopSearchPage {
   const items = isRecord(sectionPayload) ? sectionPayload.items : undefined;
 
   if (!Array.isArray(items)) {
-    throw new Error('Malformed Wallapop response: data.section.payload.items is not an array');
+    throw malformed('data.section.payload.items is not an array');
   }
 
   const validatedItems = items.map((item, index) => {
     if (!isRecord(item) || typeof item.id !== 'string' || item.id.length === 0) {
-      throw new Error(`Malformed Wallapop response: item ${index} has no string id`);
+      throw malformed(`item ${index} has no string id`);
     }
     return item as RawWallapopItem;
   });
@@ -196,7 +196,7 @@ function parseSearchResponse(payload: unknown): WallapopSearchPage {
   const meta = payload.meta;
   const nextPage = isRecord(meta) ? meta.next_page : undefined;
   if (nextPage !== undefined && typeof nextPage !== 'string') {
-    throw new Error('Malformed Wallapop response: meta.next_page is not a string');
+    throw malformed('meta.next_page is not a string');
   }
 
   return {
@@ -210,6 +210,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isRetryable(error: unknown): boolean {
+  if (error instanceof MalformedWallapopResponseError) {
+    return true;
+  }
   if (!axios.isAxiosError(error)) {
     return false;
   }
@@ -218,6 +221,17 @@ function isRetryable(error: unknown): boolean {
   }
   const status = error.response.status;
   return status === 403 || status === 429 || status >= 500;
+}
+
+class MalformedWallapopResponseError extends Error {
+  constructor(detail: string) {
+    super(`Malformed Wallapop response: ${detail}`);
+    this.name = 'MalformedWallapopResponseError';
+  }
+}
+
+function malformed(detail: string): MalformedWallapopResponseError {
+  return new MalformedWallapopResponseError(detail);
 }
 
 function getRetryAfterMs(error: unknown, nowMs: number): number | undefined {

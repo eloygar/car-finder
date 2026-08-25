@@ -104,14 +104,18 @@ acepta también el formato histórico `{ "value": ... }` mostrado por `/items/{i
 | `category_id=100` | OK, 40 coches |
 | `keywords=BMW` | OK, filtra por título (equivalente a brand search) |
 | `brand=BMW` | OK, nativo (equivale a keywords BMW pero con section `organic_search_results` vs `category_feed_results`) |
+| `model=Corolla` | OK, filtra el modelo de forma nativa |
 | `engine=gasoil` | OK, filtra Diesel (engine values gasoil/gasoline/hybrid...) |
+| `gearbox=automatic` | OK, filtra el cambio de forma nativa (`gear_box` se ignora) |
+| `body_type=sedan` | OK, filtra la carrocería de forma nativa |
+| `min_sale_price/max_sale_price` | OK, filtra el precio de venta de forma nativa |
 | `latitude=40.4168&longitude=-3.7038&distance=10000` | OK, centra en Madrid 10km, vs default Vigo cuando sin geo |
 | `city=Madrid` | NO filtra (ignorado, sigue Vigo) — ciudad se resuelve vía lat/lon+distance, no string |
 | `year=2020, km=50000, horse_power=150` | NO filtra (ignorados, devuelve años variados) — nombres param reales desconocidos o no nativos |
-| `min_price/max_price` | Ignorados en spike (probado `min_price` no filtra, 24250 fuera de rango). Posible `min_sale_price/max_sale_price` no probado con geo. |
+| `min_price/max_price` | Ignorados; usar `min_sale_price/max_sale_price` |
 | `order_by` | `price_low_to_high` funciona marginal, default `closest` |
 
-Conclusión: pocos filtros nativos reales expuestos vía query params simples. `brand` y `engine` sí, `keywords` siempre, geo `latitude/longitude/distance` sí. Resto (año, km, potencia) probablemente requieren `filters` JSON o son post-filtro.
+Conclusión: `brand`, `model`, `engine`, `gearbox`, `body_type`, precio, `keywords` y geo son filtros nativos. Año, km y potencia probablemente requieren `filters` JSON o son post-filtro. Los resultados compactos pueden omitir `gear_box` y `body_type` aunque esos filtros se hayan aplicado en el servidor.
 
 ## Implicación ciudad + radio
 

@@ -5,7 +5,12 @@ export type RawWallapopItem = {
 
 export interface WallapopSearchParams {
   brand: string;
+  model?: string;
   engine?: string;
+  transmission?: string;
+  bodyType?: string;
+  priceMin?: number;
+  priceMax?: number;
   categoryId: number;
   latitude: number;
   longitude: number;

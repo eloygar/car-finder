@@ -8,7 +8,12 @@ export interface SearchLocation {
 export interface SearchDefinition {
   id: string;
   brand: string;
+  model?: string;
   engine?: string;
+  transmission?: string;
+  bodyType?: string;
+  priceMin?: number;
+  priceMax?: number;
   location: SearchLocation;
 }
 

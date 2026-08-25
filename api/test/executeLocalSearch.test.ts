@@ -39,6 +39,7 @@ afterEach(async () => {
 describe('executeLocalSearch reconciliation', () => {
   it('reconciles the completed filtered capture and returns its summary', async () => {
     const outputPath = await temporaryOutputPath();
+    const searchPage = vi.fn().mockResolvedValue({ items: [rawListing] });
     const reconcile = vi.fn().mockResolvedValue({
       total: 1,
       created: 1,
@@ -48,12 +49,26 @@ describe('executeLocalSearch reconciliation', () => {
       dryRun: false,
     });
 
-    const result = await executeLocalSearch(request, logger, {
-      client: { searchPage: vi.fn().mockResolvedValue({ items: [rawListing] }) },
+    const result = await executeLocalSearch({
+      ...request,
+      engine: 'hybride',
+      transmission: 'automatic',
+      bodyType: 'sedan',
+      price: { min: 10_000, max: 20_000 },
+    }, logger, {
+      client: { searchPage },
       outputPath,
       reconcile,
     });
 
+    expect(searchPage).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'Corolla',
+      engine: 'hybride',
+      transmission: 'automatic',
+      bodyType: 'sedan',
+      priceMin: 10_000,
+      priceMax: 20_000,
+    }));
     expect(reconcile).toHaveBeenCalledWith([rawListing]);
     expect(result.reconciliation).toEqual({
       status: 'completed',

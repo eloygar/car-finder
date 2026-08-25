@@ -87,16 +87,31 @@ describe('runSearchBatch', () => {
     expect(searchPage).toHaveBeenCalledTimes(1);
   });
 
-  it('passes an optional engine filter through every page', async () => {
+  it('passes optional native vehicle filters through every page', async () => {
     const { client, searchPage } = clientWithPages({ items: [] });
 
     await runSearchBatch({
       client,
-      searches: [{ ...searches[0]!, engine: 'gasoil' }],
+      searches: [{
+        ...searches[0]!,
+        model: 'Corolla',
+        engine: 'hybride',
+        transmission: 'automatic',
+        bodyType: 'sedan',
+        priceMin: 10_000,
+        priceMax: 20_000,
+      }],
       logger,
     });
 
-    expect(searchPage).toHaveBeenCalledWith(expect.objectContaining({ engine: 'gasoil' }));
+    expect(searchPage).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'Corolla',
+      engine: 'hybride',
+      transmission: 'automatic',
+      bodyType: 'sedan',
+      priceMin: 10_000,
+      priceMax: 20_000,
+    }));
   });
 
   it('stops when a page is empty even if it includes a cursor', async () => {

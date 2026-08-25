@@ -110,15 +110,28 @@ describe('WallapopClient', () => {
     });
   });
 
-  it('sends the optional native engine filter', async () => {
+  it('sends the optional native vehicle filters with their current query names', async () => {
     const { http, get } = mockHttp(searchPayload([]));
     const client = new WallapopClient({ httpClient: http, minRequestIntervalMs: 0 });
 
-    await client.searchPage({ ...params, engine: 'gasoil' });
+    await client.searchPage({
+      ...params,
+      model: 'Corolla',
+      engine: 'hybride',
+      transmission: 'automatic',
+      bodyType: 'sedan',
+      priceMin: 10_000,
+      priceMax: 20_000,
+    });
 
     expect(get.mock.calls[0]?.[1]?.params).toMatchObject({
       brand: 'Toyota',
-      engine: 'gasoil',
+      model: 'Corolla',
+      engine: 'hybride',
+      gearbox: 'automatic',
+      body_type: 'sedan',
+      min_sale_price: 10_000,
+      max_sale_price: 20_000,
       category_id: 100,
     });
   });
@@ -132,9 +145,42 @@ describe('WallapopClient', () => {
     searchPayload([{ id: 'ok' }], 123),
   ])('rejects malformed response payload %#', async (payload) => {
     const { http } = mockHttp(payload);
-    const client = new WallapopClient({ httpClient: http, minRequestIntervalMs: 0 });
+    const client = new WallapopClient({
+      httpClient: http,
+      minRequestIntervalMs: 0,
+      maxRetries: 0,
+    });
 
     await expect(client.searchPage(params)).rejects.toThrow('Malformed Wallapop response');
+  });
+
+  it('retries a transient malformed success response with the same search parameters', async () => {
+    const { http, get } = mockHttp({}, searchPayload([]));
+    const retries = vi.fn();
+    let clock = 0;
+    const client = new WallapopClient({
+      httpClient: http,
+      minRequestIntervalMs: 1_000,
+      maxRetries: 1,
+      now: () => clock,
+      random: () => 0,
+      sleep: async (delay) => {
+        clock += delay;
+      },
+      onRetry: retries,
+    });
+
+    await expect(client.searchPage({ ...params, nextPage: 'opaque-token' })).resolves.toEqual({
+      items: [],
+    });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[0]?.[1]?.params).toEqual(get.mock.calls[1]?.[1]?.params);
+    expect(retries).toHaveBeenCalledWith({
+      attempt: 1,
+      delayMs: 1_000,
+      status: undefined,
+      code: 'MALFORMED_RESPONSE',
+    });
   });
 
   it('honours Retry-After before retrying an eligible response', async () => {
