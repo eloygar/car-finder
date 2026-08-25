@@ -87,6 +87,18 @@ describe('runSearchBatch', () => {
     expect(searchPage).toHaveBeenCalledTimes(1);
   });
 
+  it('passes an optional engine filter through every page', async () => {
+    const { client, searchPage } = clientWithPages({ items: [] });
+
+    await runSearchBatch({
+      client,
+      searches: [{ ...searches[0]!, engine: 'gasoil' }],
+      logger,
+    });
+
+    expect(searchPage).toHaveBeenCalledWith(expect.objectContaining({ engine: 'gasoil' }));
+  });
+
   it('stops when a page is empty even if it includes a cursor', async () => {
     const { client, searchPage } = clientWithPages({ items: [], nextCursor: 'unused' });
 

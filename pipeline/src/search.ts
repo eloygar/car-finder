@@ -47,6 +47,7 @@ export async function runSearchBatch(options: {
     for (let pageNumber = 1; ; pageNumber += 1) {
       const page = await options.client.searchPage({
         brand: search.brand,
+        ...(search.engine ? { engine: search.engine } : {}),
         categoryId: CAR_CATEGORY_ID,
         latitude: search.location.latitude,
         longitude: search.location.longitude,

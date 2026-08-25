@@ -49,7 +49,12 @@ describe('PostgreSQL reconciliation', () => {
         provider_externalId: { provider: 'wallapop', externalId: 'integration-one' },
       },
       data: {
-        isDamaged: true,
+        classification: {
+          isDamaged: true,
+          damageConfidence: 'high',
+          repairCost: { estimate: 'medium', reasoning: 'Integration fixture' },
+          knownIssues: { found: false, detail: null },
+        },
         classifiedAt: new Date(),
         classificationVersion: 'test-v1',
       },
@@ -81,7 +86,7 @@ describe('PostgreSQL reconciliation', () => {
     expect(rows).toHaveLength(2);
     expect(rows.find((row) => row.externalId === 'integration-one')).toMatchObject({
       description: 'Changed description',
-      isDamaged: null,
+      classification: null,
       classifiedAt: null,
       classificationVersion: null,
     });

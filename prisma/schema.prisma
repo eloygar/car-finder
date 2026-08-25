@@ -38,12 +38,7 @@ model Listing {
   lastSeenAt  DateTime @default(now())
   rawPayload  Json?
 
-  isDamaged             Boolean?
-  damageConfidence      String?
-  repairCostEstimate    String?
-  repairCostReasoning   String?
-  knownIssues           Boolean?
-  knownIssuesDetail     String?
+  classification        Json?     @db.JsonB
   classificationVersion String?
   classifiedAt          DateTime?
 

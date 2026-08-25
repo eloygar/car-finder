@@ -1,0 +1,62 @@
+export interface VehicleQuery {
+  brand: string;
+  model: string;
+  year?: number;
+}
+
+export type KnownIssueSeverity = 'low' | 'medium' | 'high' | 'unknown';
+
+export interface KnownIssueMatch {
+  id: string;
+  description: string;
+  severity: KnownIssueSeverity;
+  yearFrom: number | null;
+  yearTo: number | null;
+  sourceUrl: string | null;
+}
+
+export interface CheckKnownIssuesResult {
+  hasKnownIssues: boolean;
+  issues: KnownIssueMatch[];
+}
+
+export interface MarketPriceFilters {
+  brand: string;
+  model: string;
+  yearWindow: { from: number; to: number } | null;
+}
+
+export interface MarketPriceEstimate {
+  status: 'ok';
+  currency: 'EUR';
+  sampleSize: number;
+  filters: MarketPriceFilters;
+  average: string;
+  median: string;
+  minimum: string;
+  maximum: string;
+}
+
+export interface InsufficientMarketData {
+  status: 'insufficient_data';
+  currency: 'EUR';
+  sampleSize: number;
+  requiredSampleSize: 3;
+  filters: MarketPriceFilters;
+}
+
+export type EstimateMarketPriceResult = MarketPriceEstimate | InsufficientMarketData;
+
+export interface KnownIssueRecord {
+  id: string;
+  issueDescription: string;
+  severity: string;
+  yearFrom: number | null;
+  yearTo: number | null;
+  source: string | null;
+}
+
+export interface McpToolRepository {
+  findKnownIssues(query: VehicleQuery): Promise<KnownIssueRecord[]>;
+  findComparablePrices(query: VehicleQuery): Promise<string[]>;
+}

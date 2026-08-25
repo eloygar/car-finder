@@ -110,6 +110,19 @@ describe('WallapopClient', () => {
     });
   });
 
+  it('sends the optional native engine filter', async () => {
+    const { http, get } = mockHttp(searchPayload([]));
+    const client = new WallapopClient({ httpClient: http, minRequestIntervalMs: 0 });
+
+    await client.searchPage({ ...params, engine: 'gasoil' });
+
+    expect(get.mock.calls[0]?.[1]?.params).toMatchObject({
+      brand: 'Toyota',
+      engine: 'gasoil',
+      category_id: 100,
+    });
+  });
+
   it.each([
     {},
     { data: {} },

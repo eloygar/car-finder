@@ -185,16 +185,11 @@ model Listing {
   status                String    @default("active") // active | unavailable
   contentHash           String    // hash de las entradas usadas por la clasificación
   firstSeenAt           DateTime  @default(now())
-  lastSeenAt            DateTime  @updatedAt
+  lastSeenAt            DateTime  @default(now()) // gestionado explícitamente por reconciliación
   rawPayload            Json?
 
   // Clasificación IA
-  isDamaged             Boolean?
-  damageConfidence       String?   // low | medium | high
-  repairCostEstimate     String?   // none | low | medium | high
-  repairCostReasoning     String?
-  knownIssues            Boolean?
-  knownIssuesDetail       String?
+  classification         Json?      @db.JsonB // salida extensible validada en TypeScript
   classificationVersion   String?   // ej. "v1", permite re-clasificar en masa al mejorar el prompt
   classifiedAt            DateTime?
 
@@ -297,10 +292,15 @@ Reglas:
       {
         "isDamaged": boolean,
         "damageConfidence": "low" | "medium" | "high",
-        "repairCostEstimate": "none" | "low" | "medium" | "high",
-        "repairCostReasoning": string,
-        "knownIssues": boolean,
-        "knownIssuesDetail": string | null
+        "repairCost": {
+          "estimate": "none" | "low" | "medium" | "high",
+          "reasoning": string
+        },
+        "knownIssues": {
+          "found": boolean,
+          "detail": string | null
+        },
+        "toolResults": {}
       }
       ```
     - El modelo decide si invoca `check_known_issues` (y opcionalmente
@@ -408,7 +408,7 @@ a Anthropic — esas llamadas son exclusivas del pipeline manual.
 
 ### `ListingDetailPage`
 - Todos los atributos + sección explícita de "Análisis IA": daño, coste estimado de
-  reparación con el razonamiento (`repairCostReasoning`), incidencias conocidas del
+  reparación con el razonamiento (`classification.repairCost.reasoning`), incidencias conocidas del
   modelo.
 - Enlace al anuncio original en Wallapop.
 

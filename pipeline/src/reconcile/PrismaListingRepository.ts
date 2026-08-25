@@ -1,4 +1,4 @@
-import type { Prisma } from '../../../prisma/generated/client/client.js';
+import { Prisma } from '../../../prisma/generated/client/client.js';
 import type { DatabaseClient } from '../db/client.js';
 import type {
   ExistingListingState,
@@ -97,12 +97,7 @@ function toBaseData(listing: MappedListing) {
 
 function clearedClassification() {
   return {
-    isDamaged: null,
-    damageConfidence: null,
-    repairCostEstimate: null,
-    repairCostReasoning: null,
-    knownIssues: null,
-    knownIssuesDetail: null,
+    classification: Prisma.DbNull,
     classificationVersion: null,
     classifiedAt: null,
   } as const;

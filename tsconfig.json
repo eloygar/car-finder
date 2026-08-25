@@ -12,5 +12,14 @@
     "types": ["node", "vitest/globals"],
     "outDir": "dist"
   },
-  "include": ["pipeline/src/**/*.ts", "pipeline/test/**/*.ts"]
+  "include": [
+    "pipeline/src/**/*.ts",
+    "pipeline/test/**/*.ts",
+    "shared/src/**/*.ts",
+    "mcp-server/src/**/*.ts",
+    "mcp-server/test/**/*.ts",
+    "api/src/**/*.ts",
+    "api/test/**/*.ts",
+    "prisma/seedKnownIssues.ts"
+  ]
 }

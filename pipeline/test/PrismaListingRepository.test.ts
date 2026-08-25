@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { Prisma } from '../../prisma/generated/client/client.js';
 import type { DatabaseClient } from '../src/db/client.js';
 import { PrismaListingRepository } from '../src/reconcile/PrismaListingRepository.js';
 import type { PreparedListing, ReconciliationAction } from '../src/reconcile/types.js';
@@ -103,17 +104,12 @@ describe('PrismaListingRepository', () => {
     ], new Date());
 
     expect(update.mock.calls[0]?.[0].data).toMatchObject({
-      isDamaged: null,
-      damageConfidence: null,
-      repairCostEstimate: null,
-      repairCostReasoning: null,
-      knownIssues: null,
-      knownIssuesDetail: null,
+      classification: Prisma.DbNull,
       classificationVersion: null,
       classifiedAt: null,
     });
     expect(update.mock.calls[1]?.[0].data).not.toHaveProperty('classifiedAt');
-    expect(update.mock.calls[1]?.[0].data).not.toHaveProperty('isDamaged');
+    expect(update.mock.calls[1]?.[0].data).not.toHaveProperty('classification');
   });
 
   it('propagates transaction failures', async () => {

@@ -114,6 +114,10 @@ export class WallapopClient {
       distance: params.distance,
     };
 
+    if (params.engine) {
+      query.engine = params.engine;
+    }
+
     if (params.nextPage) {
       query.next_page = params.nextPage;
     }
