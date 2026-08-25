@@ -14,7 +14,12 @@ describe('local search API', () => {
     expect(body.models.Toyota).toEqual(expect.arrayContaining(['Corolla']));
     expect(body.locations).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'madrid', label: 'Madrid' }),
+      expect.objectContaining({ id: 'alicante', label: 'Alicante' }),
+      expect.objectContaining({ id: 'malaga', label: 'Málaga' }),
+      expect.objectContaining({ id: 'palma', label: 'Palma' }),
+      expect.objectContaining({ id: 'las-palmas', label: 'Las Palmas de Gran Canaria' }),
     ]));
+    expect(body.locations).toHaveLength(52);
   });
 
   it('validates input before starting a search', async () => {

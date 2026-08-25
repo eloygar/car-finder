@@ -5,12 +5,15 @@ MAX_PAGES ?= 1
 BRAND ?= Toyota
 MODEL ?= Corolla
 YEAR ?= 2023
+CLASSIFY_LIMIT ?= 10
+CLASSIFY_ID ?=
 
 .DEFAULT_GOAL := help
 
 .PHONY: help install setup check test test-integration typecheck \
 	db-up db-down db-migrate db-seed search search-one \
-	reconcile reconcile-dry mcp-server mcp-smoke app app-build app-start
+	reconcile reconcile-dry mcp-server mcp-smoke app app-build app-start \
+	classify classify-all classify-one classify-dry
 
 help:
 	@echo "Car Finder development commands"
@@ -21,6 +24,10 @@ help:
 	@echo "  make search-one        Run a limited search (SEARCH_ID, MAX_PAGES)"
 	@echo "  make reconcile         Reconcile output/raw-listings.json into PostgreSQL"
 	@echo "  make reconcile-dry     Validate and compare listings without writes"
+	@echo "  make classify          Classify pending listings (CLASSIFY_LIMIT)"
+	@echo "  make classify-all      Classify every pending or outdated active listing"
+	@echo "  make classify-one      Classify one listing (CLASSIFY_ID)"
+	@echo "  make classify-dry      Count all pending listings without paid calls"
 	@echo "  make mcp-smoke         Call both MCP tools (BRAND, MODEL, YEAR)"
 	@echo "  make mcp-server        Start the MCP stdio server"
 	@echo "  make app               Start the local search UI and API"
@@ -69,6 +76,19 @@ reconcile:
 
 reconcile-dry:
 	$(PNPM) pipeline:reconcile -- --dry-run
+
+classify:
+	$(PNPM) pipeline:classify -- --limit $(CLASSIFY_LIMIT)
+
+classify-all:
+	$(PNPM) pipeline:classify -- --all
+
+classify-one:
+	@test -n "$(CLASSIFY_ID)" || (echo "CLASSIFY_ID is required" && exit 2)
+	$(PNPM) pipeline:classify -- --only "$(CLASSIFY_ID)"
+
+classify-dry:
+	$(PNPM) pipeline:classify -- --all --dry-run
 
 mcp-server:
 	$(PNPM) mcp:server

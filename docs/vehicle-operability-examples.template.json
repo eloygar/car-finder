@@ -1,0 +1,385 @@
+{
+  "schemaVersion": "1.0",
+  "task": {
+    "toolName": "classify_vehicle_operability",
+    "inputField": "description",
+    "question": "¿La descripción afirma que el vehículo puede arrancar y circular por sus propios medios?",
+    "labels": {
+      "operational": "La descripción aporta evidencia de que el vehículo arranca y puede circular.",
+      "non_operational": "La descripción aporta evidencia de que no arranca, no circula o necesita reparación antes de poder circular.",
+      "unknown": "La descripción no contiene evidencia suficiente o contiene información contradictoria. La ausencia de averías mencionadas no demuestra que funcione."
+    }
+  },
+  "annotationRules": [
+    "Clasifica únicamente a partir de la descripción; no uses título, precio, fotos, marca ni conocimiento externo.",
+    "No supongas que el vehículo funciona solo porque la descripción no menciona averías.",
+    "Usa non_operational si se indica que no arranca, no anda, está averiado o requiere una reparación previa para circular.",
+    "Usa operational si se indica de forma explícita que arranca, funciona, anda o se usa actualmente.",
+    "Usa unknown para descripciones vacías, ambiguas, contradictorias o que solo hablan del estado estético.",
+    "Cada elemento de evidence debe ser un fragmento literal y breve presente en description.",
+    "reason debe explicar la decisión de forma breve, sin añadir datos que no aparezcan en la descripción."
+  ],
+  "exampleTemplate": {
+    "id": "example-001",
+    "input": {
+      "description": "SUSTITUIR CON LA DESCRIPCIÓN REAL O SINTÉTICA"
+    },
+    "expected": {
+      "status": "operational | non_operational | unknown",
+      "confidence": "low | medium | high",
+      "evidence": [
+        "FRAGMENTO LITERAL DE LA DESCRIPCIÓN"
+      ],
+      "reason": "EXPLICACIÓN BREVE DE LA ETIQUETA"
+    },
+    "notes": "OPCIONAL: por qué este ejemplo es útil o qué caso límite representa"
+  },
+  "examples": [
+    {
+      "id": "example-001",
+      "input": {
+        "description": "vendo bmw 320 td 6v ,motor roto."
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "motor roto"
+        ],
+        "reason": "Contiene evidencia explícita de que el motor está roto, por lo que no puede arrancar ni circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona."
+    },
+    {
+      "id": "example-002",
+      "input": {
+        "description": "BMW 320d 150 CV – Siniestrado / ideal para reparar o despiece Se vende BMW 320d de 150 caballos, motor diésel, por tener golpe frontal. A raíz del accidente saltaron los airbags. El coche se vende tal y como está, ideal para quien quiera repararlo, aprovechar piezas o para despiece. Motor 2.0 diésel 150 CV Caja de cambios en buen estado Documentación al día Interior en buen estado general Tiene daño frontal visible Airbags activados por el impacto No se aceptan cambios. Se puede ver sin compromiso. Precio negociable dentro de lo razonable."
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "Siniestrado",
+          "golpe frontal",
+          "saltaron los airbags",
+          "ideal para quien quiera repararlo, aprovechar piezas o para despiece"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo ha sido siniestrado, lo que indica que no está en condiciones de circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a un accidente."
+    },
+    {
+      "id": "example-003",
+      "input": {
+        "description": "Se vende bmw e39 sin motor ni caja, es un 530d 184cv, tiene mulles eibach atras y se vende sin el freno de mano hidraulico, faros xenon alante,se encuentra en redondela, el techo solar no funciona y entraba agua por eso aun tiene algo de humedad en los asientos y la ventanilla trasera del lado del copiloto no va, del resto es lo que se mira en las fotos, no tiene ningún oxido ni ningún rajazo. Precio algo negociable"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "sin motor ni caja",
+          "el techo solar no funciona",
+          "entraba agua por eso aun tiene algo de humedad en los asientos"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo no está en condiciones de circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a la falta de componentes esenciales."
+    },
+    {
+      "id": "example-004",
+      "input": {
+        "description": "se vende despiece de BMW 528i"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "despiece"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está despiece, por lo que no puede arrancar ni circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona."
+    },
+    {
+      "id": "example-005",
+      "input": {
+        "description": "despiece completo preguntar por piezas y precios"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "despiece"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está despiece, por lo que no puede arrancar ni circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona."
+    },
+    {
+      "id": "example-006",
+      "input": {
+        "description": "Vehículo en gestión de venta, acidentado.motor ok-cambio manual 6 velocidades 4 ruedas nuevas, itv e impuestos al día, solo golpe de chapa airbag ok"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "medium",
+        "evidence": [
+          "acidentado"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo ha sido siniestrado, lo que indica que no está en condiciones de circular. Sin embargo, se menciona que el motor está bien y que los airbags están en buen estado, lo que podría indicar que el vehículo podría ser reparado y volver a estar operativo."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a un accidente, pero también menciona que el motor y los airbags están en buen estado, lo que podría indicar que el vehículo podría ser reparado y volver a estar operativo."
+    },
+    {
+      "id": "example-007",
+      "input": {
+        "description": "Se vende coche con avería de motor. Tiene la cadena estirada, no rompió. Se arranco pero  no sonaba muy bien y lo pare, osea que si arrancó no se si tendrá algo mas que el kit de distribución, ya que no soy mecánico. Es el full equip con motor 2.0 diesel de 177cv, llantas 17. Itv  pasada en Mayo. Sin fallos. Ruedas delanteras al 95% y traseras al 85% Llanta 17. Se vende tal y como está para PIEZAS o para arreglar. El coche se haría transferencia (por el comprador) Escribir solo interesados."
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "avería de motor",
+          "cadena estirada",
+          "no sonaba muy bien",
+          "se vende tal y como está para PIEZAS o para arreglar"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo tiene una avería de motor y se vende para piezas o para arreglar, lo que indica que no está en condiciones de circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a una avería de motor y se vende para piezas o para arreglar."
+    },
+    {
+      "id": "example-008",
+      "input": {
+        "description": "••MOTOR GRIPADO•• (Precio negociable)"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "MOTOR GRIPADO"
+        ],
+        "reason": "Contiene evidencia explícita de que el motor está gripado, lo que indica que no puede arrancar ni circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a un motor gripado."
+    },
+    {
+      "id": "example-009",
+      "input": {
+        "description": "Cuidado esta sin itv anda perfectamente con itv 3000 el primero que llegue se lo lleva se estudia cambio por gasolina o se recoge coche como parte de pago no mareantes si no tienes el dinero no molestes  solo hoy [TELÉFONO ELIMINADO] el coche necesita amortiguadores de atras motor de arranque y dos neumáticos"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "medium",
+        "evidence": [
+          "necesita amortiguadores de atras",
+          "motor de arranque",
+          "dos neumáticos",
+          "Cuidado esta sin itv"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo necesita reparaciones en los amortiguadores, el motor de arranque y los neumáticos, lo que indica que no está en condiciones de circular. Sin embargo, se menciona que anda perfectamente con ITV, lo que podría indicar que el vehículo podría ser reparado y volver a estar operativo."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo no funciona debido a la necesidad de reparaciones, pero también menciona que anda perfectamente con ITV, lo que podría indicar que el vehículo podría ser reparado y volver a estar operativo."
+    },
+    {
+      "id": "example-010",
+      "input": {
+        "description": "Toyota Land Cruiser Serie 120 (KDJ120), versión VX, matriculado en España. Unidad en excelente estado, muy cuidada y con 193.000 km reales. Motor 3.0 D 4D 173 CV, uno de los más fiables de Toyota. Tracción total permanente con reductora. Con dos ruedas de repuesto nuevas (Llantas y neumaticos). Batería VARTA SD 77AH-780A nueva (2026). Precio revisado a 28.300 Equipamiento destacado •\tVersión VX con techo solar •\tMotor 3.0 D 4D 173 CV •\tCambio manual 6 velocidades\n•\t5 puertas\n•\tTapicería de terciopelo\n•\tTecho solar\n•\tClimatizador bizona\n•\tControl de crucero\n•\tRetrovisores eléctricos y abatibles\n•\tVolante multifunción\n\nEstado y mantenimiento\n•\tPintura recién hecha, sin arañazos\n•\tNeumáticos nuevos Vredestein, menos de 3000km\n•\tInterior muy cuidado\n•\tMantenimiento al día, revisiones demostrables\n•\tMotor suave, sin ruidos ni humos\n•\tChasis y bajos en excelente estado\n•\tSin uso intensivo de campo (90% autovías)\n•\tITV enero 2026\nExtras importantes\n•\tIncluye DOS ruedas de repuesto completas NUEVAS (llanta TYT +  neumatico Vredestein), Valor total del extra superior a 1000€ Ideal para viajes largos, rutas y seguridad adicional.\nDocumentación\n•   Matriculado en España \n•   ITV al día\n•   Libro de mantenimiento\n•   Dos llaves\n•   Sin cargas ni incidencias"
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "medium",
+        "evidence": [
+          "Motor suave, sin ruidos ni humos",
+          "Mantenimiento al día, revisiones demostrables",
+          "ITV enero 2026",
+          "Sin uso intensivo de campo (90% autovías)",
+          "Neumáticos nuevos",
+          "Unidad en excelente estado, muy cuidada"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en excelente estado, con mantenimiento al día, motor suave y sin ruidos ni humos, lo que indica que puede arrancar y circular por sus propios medios. Ademas contiene extensiva información sobre el estado del vehículo, incluyendo que tiene ITV al día y neumáticos nuevos, lo que refuerza la conclusión de que está operativo."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-011",
+      "input": {
+        "description": "TOYOTA GR YARIS TOURING PACK\n\n- NACIONAL\n- UNICO PROPIETARIO\n- IVA DEDUCIBLE\n- VEHICULO NUEVO (2.000 KM)\n- 3 AÑOS GARANTIA OFICIAL TOYOTA\n- INSTALACION COPMPLETA PPF CARPRO (VALORADO EN 4.000€)\n- TRATAMIENTO CERAMICO SOBRE PPF, CRISTALES Y LLANTAS\n- CUERO TRATADO Y PROTEGIDO CON CQUARTZ LEATHER 2.0\n- 11/2024\n- 280 CV\n- UBICADO EN VALENCIA\n- CONTAMOS CON MAS FOTOS Y VIDEOS!\n\nCUALQUIER CONSULTA PODEIS COMUNICARNOS\n\nEste anuncio no es vinculante, puede contener errores, se muestra a título informativo y no contractual, no pudiendo constituir en ningún caso la base de un futuro contrato."
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "high",
+        "evidence": [
+          "VEHICULO NUEVO (2.000 KM)"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo es nuevo y tiene solo 2.000 km, lo que indica que puede arrancar y circular por sus propios medios. No contine informacion explicita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-012",
+      "input": {
+        "description": "Revisiones hechas en la casa oficial,coche con muy pocos km reales y demostrables. El coche  duerme en garage se acepta revision mecanica"
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "medium",
+        "evidence": [
+          "Revisiones hechas en la casa oficial",
+          "coche con muy pocos km reales y demostrables"
+        ],
+        "reason": "El vehículo ha sido revisado en la casa oficial y tiene muy pocos km reales y demostrables, lo que indica que está en buen estado y puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-013",
+      "input": {
+        "description": "Lexus IS 300h Executive, berlina híbrido, 223cv, etiqueta ECO y solo 55.000km\n\nPerfecto estado, todo de la casa, revisiones en Lexus, ruedas Michelin cambiadas en Enero de 2026. \n\nEstado del vehículo muy bueno, tanto exterior como interior.\n\nFiabilidad Lexus, mejor ver.\n\nMás información y fotos por privado."
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "high",
+        "evidence": [
+          "Perfecto estado",
+          "revisiones en Lexus",
+          "ruedas Michelin cambiadas en Enero de 2026",
+          "Estado del vehículo muy bueno, tanto exterior como interior"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en perfecto estado, con revisiones en la casa oficial y ruedas nuevas, lo que indica que puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-014",
+      "input": {
+        "description": "-LEXUS CT200 HYBRID\n-AÑO 2018\n-MODELO 2019\n-MODELO LUXURY NAVIBOX\n-UNICO DUEÑO\n-NO FUMADOR\n-CON TAN SOLO 14.000 KILOMETROS   !!!! REESTRENO !!!!!\n-KILOMETROS DEMOSTRABLES\n-LIBRO DE MANTENIMIENTO EN SERVICIO OFICIAL LEXUS\n-SISTEMA DE NAVEGACION\n-ALARMA VOLUMETRICA\n-TAPICERIA EN PIEL ALCANTARA\n-CAMARA TRASERA\n-SISTEMA DE NAVEGACION \n-PANTALLA MULTIMEDIA\n-ABSOLUTAMENTE IMPECABLE\n-CON GARANTIA DE FABRICA DE 8 AÑOS O 250.000KMS (LO QUE ANTES SUCEDA) SIGUIENDO CON LOS MANTENIMIENTOS EN LEXUS.\n-POSIBILIDAD DE ENVIO A CUALQUIER PROVINCIA\n-POSIBILIDAD DE ENTREGAR SU VEHICULO USADO A CAMBIO (CONSULTAR)"
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "medium",
+        "evidence": [
+          "LIBRO DE MANTENIMIENTO EN SERVICIO OFICIAL LEXUS",
+          "ABSOLUTAMENTE IMPECABLE"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en perfecto estado, con mantenimiento en la casa oficial y un bajo kilometraje, lo que indica que puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-015",
+      "input": {
+        "description": "Está súper cuidado, lo abres y aún huele a nuevo como el primer dia.\n\nRevisión en Lexus recien hecha, le tocaba la más completa, garantia oficial lexus hasta 2031 o 250.000km (Lexus relax), todo con facturas.. \n\n\n- Llantas puestas a capricho (tengo también las de serie \nimpolutas)\n- Sensores de aparcamiento delanteros y traseros\n- Cámara de visión trasera\n- Navegador\n- Techo solar\n- Full leds\n- 3 modos de conduccion ( eco, normaly sport)\n- Luz ambiental en puertas\n- Asientos calefactables en piel camel\nEtc.\n\nEl coche se vende por poco uso, por favor nada de cambios ni tratos raros, solo venta y personas serias."
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "high",
+        "evidence": [
+          "Revisión en Lexus recien hecha",
+          "garantia oficial lexus",
+          "todo con facturas",
+          "Está súper cuidado",
+          "poco uso"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en perfecto estado, con mantenimiento en la casa oficial y poco uso, lo que indica que puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-016",
+      "input": {
+        "description": "EL COCHE NO TIENE NI UN SOLO ARAÑAZO NI CARROCERIA NI INTERIOE NI LLANTAS. JAMAS REPINTADO. Y TODAS LAS REVISIONES EN TALLER OFICIAL LEXUS, 15 AÑOS DE GARANTÍA, COMO PODÉIS OBSERVAR, TIENE HASTA LOS PLÁSTICOS DEL BORDE DE LA PUERTA PARA NO MANCHAR CON EL PIE Y EL PLÁSTICO DEL PARASOL DE ORIGEN TODAVÍA.. SI TE INTERESA SE VENDE A PARTIR DEL 17 DE SEPTIEMBRE, QUE ES CUANDO ME ENTREGAN EL NUEVO. Actualmente tiene 48.000 km y de aquí a septiembre tendrá un máximo de 50.000 km.\ntapicería de cuero, asientos delanteros eléctricos y calefactables, faros LED y el sistema de seguridad Lexus Safety System +.\nConfort interior: Asientos delanteros con reglaje eléctrico (8 vías) y soporte lumbar.\nTecnología: Sistema multimedia con pantalla táctil compatible con Apple CarPlay y Android Auto.Climatización: Sistema automático de dos zonas con sensores de calidad del aire.Seguridad (Lexus Safety System +): Asistente de precolisión (con peatones y ciclistas), control de crucero adaptativo, asistente de mantenimiento de carril y reconocimiento de señales.\nAsientos, volante y retrovisores calefactados \nLuces y limpia parabrisas automáticos.\nTecho que se abre ."
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "medium",
+        "evidence": [
+          "todas las revisiones en taller oficial Lexus",
+          "EL COCHE NO TIENE NI UN SOLO ARAÑAZO NI CARROCERIA NI INTERIOE NI LLANTAS",
+          "JAMAS REPINTADO"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en perfecto estado, con mantenimiento en la casa oficial y sin daños visibles, lo que indica que puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-017",
+      "input": {
+        "description": "VEHÍCULO ACONDICIONADO A CAPRICHO, (funciona perfectamente e invertido en él más de 4 mil €).\nLlantas Lexus Black Glossy, neumáticos nuevos, (delanteros de invierno 225/40/R18 y traseros mixtos 255/40/R18) homologados. Embrague, calentadores, inyectores y juntas nuevos, radiador y bote de expansión nuevos, manguitos, filtros, aceites y líquidos nuevos, discos de frenos traseros ventilados y delanteros ventilados y perforados nuevos, pastillas de frenos Brembo nuevas, volante en piel cosido a mano en rojo, (foto disponible del perfecto estado del original), asientos negros en ante y piel eléctricos y calefactables, suspensiones nuevas, pulido de faros Xenon, alfombrillas nuevas, volante eléctrico retráctil y multifunción, pintados cuatro rasguños, pulido de pintura y encerado, placas matrícula nuevas, intermitentes laterales leds direccionales y ahumados, gas del climatizador bizona y filtro nuevos, luces de cortesía Lexus en puertas delanteras y retrovisores, alarma, dos mandos a distancia Performer de carbono con apertura en acercamiento, parktronic delanteros y traseros, lavafaros, escobillas Valeo silenciosas nuevas, etc. \nColor WHITE PEARL CS. \n*ITV PASADA A LA PRIMERA (nov 2026)\n*A TODA PRUEBA. \n(Me robaron los derivabrisas)"
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "high",
+        "evidence": [
+          "funciona perfectamente",
+          "Llantas Lexus Black Glossy",
+          "neumáticos nuevos"
+        ],
+        "reason": "El vehículo funciona perfectamente y tiene componentes nuevos, lo que indica que está en condiciones de circular."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-018",
+      "input": {
+        "description": "En buen estado general todos los mantenimientos al dia unico propietario algun defecto del sol en pintura sin mucha importancia. Coche muy fiable No negociable abstenerse ofertas ."
+      },
+      "expected": {
+        "status": "operational",
+        "confidence": "high",
+        "evidence": [
+          "En buen estado general",
+          "todos los mantenimientos al dia",
+          "Coche muy fiable"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo está en buen estado general, con todos los mantenimientos al día y es muy fiable, lo que indica que puede arrancar y circular por sus propios medios. No contiene información explícita de averías o problemas que impidan su funcionamiento."
+      },
+      "notes": "Este ejemplo es útil porque contiene evidencia explícita de que el vehículo funciona correctamente y está en condiciones de circular, a diferencia de los ejemplos anteriores que muestran vehículos no operativos."
+    },
+    {
+      "id": "example-019",
+      "input": {
+        "description": "Coche con golpe , Motor 2.0 tdi 140 no se como  estara despues de golpe ... vano motor bastante machacado ... punta tocada .. mejor ver o para despiece   , del resto esta perfecto .llantas 18  ,inrerior de cuero perfecto (no saltaron los airbags) mantenimientos, correa de distribución ruedas casi nuevas . Ultimo precio , par ala semana desguace"
+      },
+      "expected": {
+        "status": "non_operational",
+        "confidence": "high",
+        "evidence": [
+          "Coche con golpe",
+          "vano motor bastante machacado",
+          "punta tocada"
+        ],
+        "reason": "Contiene evidencia explícita de que el vehículo tiene daños estructurales significativos, como un vano motor machacado y una punta tocada, lo que indica que no está en condiciones de circular."
+      },
+      "notes": "Este ejemplo es útil porque muestra un caso límite de un vehículo no operativo debido a daños estructurales significativos."
+    },
+    {
+      "id": "example-020",
+      "input": {
+        "description": "2 0 hdi 2003 Itv hasta noviembre"
+      },
+      "expected": {
+        "status": "unknown",
+        "confidence": "high",
+        "evidence": [
+          "Itv hasta noviembre"
+        ],
+        "reason": "La descripción no contiene evidencia explícita de que el vehículo pueda arrancar y circular, pero tampoco menciona averías o problemas que impidan su funcionamiento. La mención de la ITV vigente sugiere que el vehículo podría estar operativo, pero no es suficiente para confirmar su estado."
+      },
+      "notes": "Este ejemplo es útil porque muestra un caso límite de un vehículo con información insuficiente para determinar su operatividad, pero con indicios de que podría estar operativo debido a la ITV vigente."
+    },
+    {
+      "id": "example-021",
+      "input": {
+        "description": ""
+      },
+      "expected": {
+        "status": "unknown",
+        "confidence": "high",
+        "evidence": [],
+        "reason": "La descripción está vacía, por lo que no hay evidencia suficiente para determinar si el vehículo puede arrancar y circular por sus propios medios."
+      },
+      "notes": "Este ejemplo es útil porque muestra un caso límite de un vehículo con información insuficiente para determinar su operatividad debido a la ausencia de descripción."
+    }
+  ]
+}

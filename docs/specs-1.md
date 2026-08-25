@@ -489,7 +489,7 @@ VITE_API_BASE_URL=https://<tu-api>.onrender.com
       combinaciones configuradas.
 - [ ] `pnpm pipeline:reconcile` detecta correctamente anuncios nuevos, sin cambios y
       modificados, sin duplicados; no infiere desapariciones desde capturas limitadas.
-- [ ] `pnpm pipeline:classify` clasifica anuncios pendientes usando el servidor MCP
+- [x] `pnpm pipeline:classify` clasifica anuncios pendientes usando el servidor MCP
       real y dejar constancia de `classificationVersion` y `classifiedAt`.
 - [ ] La tool `check_known_issues` es invocada de verdad por el modelo (verificable
       en logs) al menos en algún anuncio de prueba.

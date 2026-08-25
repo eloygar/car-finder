@@ -5,6 +5,8 @@ import { createPrismaClient, type DatabaseClient } from '../../../shared/src/db/
 import { createServerTransport } from '../../src/smoke.js';
 
 const ISSUE_ID = 'integration-mcp-known-issue';
+const FIXTURE_BRAND = 'McpIntegrationBrand';
+const FIXTURE_MODEL = 'McpIntegrationModel';
 const LISTING_IDS = [
   'integration-mcp-price-1',
   'integration-mcp-price-2',
@@ -23,8 +25,8 @@ describe('MCP stdio server', () => {
     await prisma.knownIssue.create({
       data: {
         id: ISSUE_ID,
-        brand: 'Toyota',
-        model: 'Corolla',
+        brand: FIXTURE_BRAND,
+        model: FIXTURE_MODEL,
         yearFrom: 2019,
         yearTo: null,
         issueDescription: 'Integration issue',
@@ -74,7 +76,7 @@ describe('MCP stdio server', () => {
 
     const issues = await client.callTool({
       name: 'check_known_issues',
-      arguments: { brand: 'toyota', model: 'COROLLA', year: 2020 },
+      arguments: { brand: FIXTURE_BRAND.toLowerCase(), model: FIXTURE_MODEL.toUpperCase(), year: 2020 },
     });
     expect(issues.structuredContent).toEqual({
       hasKnownIssues: true,
@@ -90,7 +92,7 @@ describe('MCP stdio server', () => {
 
     const prices = await client.callTool({
       name: 'estimate_market_price',
-      arguments: { brand: 'TOYOTA', model: 'corolla', year: 2020 },
+      arguments: { brand: FIXTURE_BRAND.toUpperCase(), model: FIXTURE_MODEL.toLowerCase(), year: 2020 },
     });
     expect(prices.structuredContent).toMatchObject({
       status: 'ok',
@@ -103,7 +105,7 @@ describe('MCP stdio server', () => {
 
     const invalid = await client.callTool({
       name: 'check_known_issues',
-      arguments: { brand: '', model: 'Corolla' },
+      arguments: { brand: '', model: FIXTURE_MODEL },
     });
     expect(invalid.isError).toBe(true);
 
@@ -125,8 +127,8 @@ function listing(
     provider: 'wallapop',
     title: `Integration ${externalId}`,
     price,
-    brand: 'Toyota',
-    model: overrides.model ?? 'Corolla',
+    brand: FIXTURE_BRAND,
+    model: overrides.model ?? FIXTURE_MODEL,
     year,
     url: `https://wallapop.com/item/${externalId}`,
     images: [],
