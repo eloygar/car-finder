@@ -94,6 +94,11 @@ a:focus-visible .result-card { outline: 3px solid color-mix(in srgb, var(--accen
 .result-image { display: grid; height: 188px; margin: 0; place-items: center; overflow: hidden; color: var(--muted); background: var(--surface-soft); }
 .result-image img { width: 100%; height: 100%; object-fit: cover; }
 .artifact-label { border: 1px solid var(--line); border-radius: 999px; padding: .4rem .7rem; color: var(--muted); background: var(--surface); font-size: .72rem; font-weight: 700; }
+.reconciliation-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .75rem; margin-bottom: 1rem; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line)); border-radius: 12px; padding: .8rem 1rem; color: var(--text); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); font-size: .82rem; }
+.reconciliation-status strong { font-weight: 800; }
+.reconciliation-status span { color: var(--muted); }
+.reconciliation-status-error { border-color: var(--error-line); background: var(--error-bg); }
+.reconciliation-status-error strong, .reconciliation-status-error span { color: var(--error-text); }
 
 .empty-state, .error-state { display: grid; min-height: 390px; place-items: center; align-content: center; gap: .8rem; border: 1px dashed var(--line); border-radius: 16px; padding: 2rem; text-align: center; background: color-mix(in srgb, var(--surface) 62%, transparent); }
 .empty-state svg { color: var(--accent); }

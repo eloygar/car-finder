@@ -1,8 +1,9 @@
 # Local search UI
 
-The local UI starts a real Wallapop vehicle search and writes the matched raw
-payloads to `output/raw-listings.json`, using the same atomic output behavior as
-the Stage 1 command.
+The local UI starts a real Wallapop vehicle search, writes the matched raw
+payloads to `output/raw-listings.json`, and automatically reconciles them into
+PostgreSQL. It uses the same atomic output behavior as the Stage 1 command and
+the same transactional reconciliation as Phase 2.
 
 ## Start in development
 
@@ -38,3 +39,14 @@ for all of them. Select values come from the committed taxonomy capture in
 Only one UI search runs at a time. A failed or incomplete search leaves the
 previous output file untouched. The result preview is capped at 100 cards, but
 the output file contains every unique matched item from all fetched pages.
+
+The API reuses one Wallapop client while it is running, so the one-second
+minimum request interval also applies between consecutive UI searches. Eligible
+403, 429, timeout, network, and 5xx failures are retried before the UI receives
+a safe error describing whether Wallapop rate limiting, availability, protocol,
+or the local capture caused the failure.
+
+Reconciliation starts only after the capture has completed and its JSON file
+has been replaced successfully. If PostgreSQL is unavailable, the valid capture
+is retained and the UI reports that database synchronization is pending. No
+absent listings are marked unavailable.

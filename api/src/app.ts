@@ -3,10 +3,14 @@ import path from 'node:path';
 
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
+import axios from 'axios';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { SEARCH_LOCATIONS } from '../../pipeline/src/config/searches.js';
-import { executeLocalSearch } from './localSearch/executeLocalSearch.js';
+import {
+  createLocalWallapopClient,
+  executeLocalSearch,
+} from './localSearch/executeLocalSearch.js';
 import {
   localSearchRequestSchema,
   type LocalSearchRequest,
@@ -23,7 +27,12 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   const app = Fastify({
     logger: options.logger === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
   });
-  const search = options.executeSearch ?? ((request) => executeLocalSearch(request, app.log));
+  const sharedClient = options.executeSearch ? undefined : createLocalWallapopClient(app.log);
+  const search = options.executeSearch ?? ((request) => executeLocalSearch(
+    request,
+    app.log,
+    { client: sharedClient! },
+  ));
   let searchInProgress = false;
 
   await app.register(cors, {
@@ -52,13 +61,19 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
     try {
       return await search(parsed.data);
     } catch (error) {
+      const failure = classifySearchFailure(error);
       request.log.error(
-        { errorType: error instanceof Error ? error.name : typeof error },
+        {
+          errorType: error instanceof Error ? error.name : typeof error,
+          failureCode: failure.code,
+          upstreamStatus: axios.isAxiosError(error) ? error.response?.status : undefined,
+          networkCode: axios.isAxiosError(error) ? error.code : undefined,
+        },
         'Local Wallapop search failed',
       );
       return reply.code(502).send({
-        error: 'search_failed',
-        message: 'Wallapop no ha completado la búsqueda. Inténtalo de nuevo.',
+        error: failure.code,
+        message: failure.message,
       });
     } finally {
       searchInProgress = false;
@@ -77,6 +92,45 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   }
 
   return app;
+}
+
+function classifySearchFailure(error: unknown): { code: string; message: string } {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    if (status === 403 || status === 429) {
+      return {
+        code: 'wallapop_rate_limited',
+        message: 'Wallapop ha limitado temporalmente las peticiones. Espera un momento y vuelve a intentarlo.',
+      };
+    }
+    if (status !== undefined && status >= 500) {
+      return {
+        code: 'wallapop_unavailable',
+        message: 'Wallapop no está respondiendo correctamente. Inténtalo de nuevo más tarde.',
+      };
+    }
+    if (!error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return {
+        code: 'wallapop_network_error',
+        message: 'La conexión con Wallapop se ha interrumpido después de varios intentos.',
+      };
+    }
+  }
+
+  if (error instanceof Error && (
+    error.message.startsWith('Malformed Wallapop response')
+    || error.message.includes('repeated cursor')
+  )) {
+    return {
+      code: 'wallapop_protocol_error',
+      message: 'Wallapop ha devuelto una respuesta inesperada. Inténtalo de nuevo.',
+    };
+  }
+
+  return {
+    code: 'search_failed',
+    message: 'La búsqueda no se ha podido guardar. Revisa los logs del servidor.',
+  };
 }
 
 type CapturedTaxonomy = {

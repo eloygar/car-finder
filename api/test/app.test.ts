@@ -38,6 +38,17 @@ describe('local search API', () => {
       displayed: 2,
       outputPath: 'output/raw-listings.json',
       items: [],
+      reconciliation: {
+        status: 'completed',
+        summary: {
+          total: 2,
+          created: 1,
+          changed: 0,
+          unchanged: 1,
+          reactivated: 0,
+          dryRun: false,
+        },
+      },
     });
     const app = await createApp({ executeSearch, logger: false, serveWeb: false });
     const response = await app.inject({
@@ -54,11 +65,45 @@ describe('local search API', () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ captured: 5, matched: 2 });
+    expect(response.json()).toMatchObject({
+      captured: 5,
+      matched: 2,
+      reconciliation: { status: 'completed', summary: { created: 1 } },
+    });
     expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({
       brand: 'Toyota',
       model: 'Corolla',
       maxPages: 1,
     }));
+  });
+
+  it('returns a safe actionable error when Wallapop rate limits the search', async () => {
+    const upstreamError = Object.assign(new Error('Request failed'), {
+      isAxiosError: true,
+      response: { status: 429 },
+    });
+    const app = await createApp({
+      executeSearch: vi.fn().mockRejectedValue(upstreamError),
+      logger: false,
+      serveWeb: false,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/search',
+      payload: {
+        brand: 'Toyota',
+        locationId: 'madrid',
+        distanceMeters: 50_000,
+        maxPages: 1,
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: 'wallapop_rate_limited',
+      message: 'Wallapop ha limitado temporalmente las peticiones. Espera un momento y vuelve a intentarlo.',
+    });
   });
 });

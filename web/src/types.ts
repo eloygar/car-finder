@@ -41,4 +41,17 @@ export interface SearchResponse {
   displayed: number;
   outputPath: string;
   items: SearchItem[];
+  reconciliation:
+    | {
+        status: 'completed';
+        summary: {
+          total: number;
+          created: number;
+          changed: number;
+          unchanged: number;
+          reactivated: number;
+          dryRun: boolean;
+        };
+      }
+    | { status: 'failed'; message: string };
 }

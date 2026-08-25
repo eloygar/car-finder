@@ -107,16 +107,25 @@ describe('runSearchBatch', () => {
     expect(searchPage).toHaveBeenCalledTimes(1);
   });
 
-  it('fails the run when Wallapop repeats a cursor', async () => {
+  it('stops safely and retains collected items when Wallapop repeats a cursor', async () => {
     const { client, searchPage } = clientWithPages(
       { items: [{ id: '1' }], nextCursor: 'same-cursor' },
       { items: [{ id: '2' }], nextCursor: 'same-cursor' },
     );
 
-    await expect(
-      runSearchBatch({ client, searches: [searches[0]!], maxPages: 3, logger }),
-    ).rejects.toThrow('repeated cursor');
+    const result = await runSearchBatch({
+      client,
+      searches: [searches[0]!],
+      maxPages: 3,
+      logger,
+    });
+
+    expect(result).toEqual([{ id: '1' }, { id: '2' }]);
     expect(searchPage).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      { searchId: 'first-search', page: 2 },
+      'Wallapop repeated a pagination cursor; stopping this search',
+    );
   });
 
   it('propagates a page failure and does not continue to the next search', async () => {

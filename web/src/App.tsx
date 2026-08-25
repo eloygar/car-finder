@@ -148,7 +148,12 @@ export function App() {
             <div aria-live="polite">
               {searching ? <LoadingResults /> : null}
               {searchError ? <ErrorState message={searchError} /> : null}
-              {!searching && !searchError && result ? <Results result={result} /> : null}
+              {!searching && !searchError && result ? (
+                <>
+                  <ReconciliationStatus reconciliation={result.reconciliation} />
+                  <Results result={result} />
+                </>
+              ) : null}
               {!searching && !searchError && !result ? <InitialState /> : null}
             </div>
           </section>
@@ -347,6 +352,32 @@ function Results({ result }: { result: SearchResponse }) {
         </p>
       ) : null}
     </>
+  );
+}
+
+function ReconciliationStatus({
+  reconciliation,
+}: {
+  reconciliation: SearchResponse['reconciliation'];
+}) {
+  if (reconciliation.status === 'failed') {
+    return (
+      <div className="reconciliation-status reconciliation-status-error" role="status">
+        <strong>Captura guardada, base de datos pendiente</strong>
+        <span>{reconciliation.message}</span>
+      </div>
+    );
+  }
+
+  const { summary } = reconciliation;
+  return (
+    <div className="reconciliation-status" role="status">
+      <strong>Base de datos actualizada</strong>
+      <span>
+        {summary.created} nuevos · {summary.changed} modificados · {summary.unchanged} sin cambios
+        {summary.reactivated > 0 ? ` · ${summary.reactivated} reactivados` : ''}
+      </span>
+    </div>
   );
 }
 

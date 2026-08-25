@@ -76,7 +76,11 @@ export async function runSearchBatch(options: {
       }
 
       if (observedCursors.has(page.nextCursor)) {
-        throw new Error(`Wallapop returned a repeated cursor for search "${search.id}"`);
+        options.logger.warn(
+          { searchId: search.id, page: pageNumber },
+          'Wallapop repeated a pagination cursor; stopping this search',
+        );
+        break;
       }
       observedCursors.add(page.nextCursor);
 

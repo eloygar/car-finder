@@ -1,5 +1,7 @@
 import * as z from 'zod/v4';
 
+import type { ReconcileSummary } from '../../../pipeline/src/reconcile/types.js';
+
 const optionalRange = z.object({
   min: z.number().nonnegative().optional(),
   max: z.number().nonnegative().optional(),
@@ -43,4 +45,7 @@ export interface LocalSearchResult {
   displayed: number;
   outputPath: string;
   items: SearchResultItem[];
+  reconciliation:
+    | { status: 'completed'; summary: ReconcileSummary }
+    | { status: 'failed'; message: string };
 }
