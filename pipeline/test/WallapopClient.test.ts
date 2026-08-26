@@ -142,7 +142,7 @@ describe('WallapopClient', () => {
     { data: { section: { payload: { items: 'not-an-array' } } } },
     searchPayload([{ title: 'missing id' }]),
     searchPayload([{ id: 123 }]),
-    searchPayload([{ id: 'ok' }], 123),
+    searchPayload([{ id: 'ok' }], { token: 'not-a-string' }),
   ])('rejects malformed response payload %#', async (payload) => {
     const { http } = mockHttp(payload);
     const client = new WallapopClient({
@@ -152,6 +152,25 @@ describe('WallapopClient', () => {
     });
 
     await expect(client.searchPage(params)).rejects.toThrow('Malformed Wallapop response');
+  });
+
+  it('converts a numeric meta.next_page into a string cursor', async () => {
+    const { http } = mockHttp(searchPayload([{ id: 'car-1' }], 28));
+    const client = new WallapopClient({ httpClient: http, minRequestIntervalMs: 0 });
+
+    await expect(client.searchPage(params)).resolves.toEqual({
+      items: [{ id: 'car-1' }],
+      nextCursor: '28',
+    });
+  });
+
+  it('treats a null meta.next_page as the end of the results', async () => {
+    const { http } = mockHttp(searchPayload([{ id: 'car-1' }], null));
+    const client = new WallapopClient({ httpClient: http, minRequestIntervalMs: 0 });
+
+    await expect(client.searchPage(params)).resolves.toEqual({
+      items: [{ id: 'car-1' }],
+    });
   });
 
   it('retries a transient malformed success response with the same search parameters', async () => {

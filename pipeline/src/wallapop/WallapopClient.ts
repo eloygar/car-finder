@@ -194,8 +194,13 @@ function parseSearchResponse(payload: unknown): WallapopSearchPage {
   });
 
   const meta = payload.meta;
-  const nextPage = isRecord(meta) ? meta.next_page : undefined;
-  if (nextPage !== undefined && typeof nextPage !== 'string') {
+  const rawNextPage = isRecord(meta) ? meta.next_page : undefined;
+  let nextPage: string | undefined;
+  if (typeof rawNextPage === 'string') {
+    nextPage = rawNextPage;
+  } else if (typeof rawNextPage === 'number' && Number.isFinite(rawNextPage)) {
+    nextPage = String(rawNextPage);
+  } else if (rawNextPage !== undefined && rawNextPage !== null) {
     throw malformed('meta.next_page is not a string');
   }
 
