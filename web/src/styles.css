@@ -51,6 +51,42 @@ button, input, select { font: inherit; }
 }
 .brand { display: inline-flex; align-items: center; gap: .7rem; color: var(--text); font-size: 1.05rem; font-weight: 800; text-decoration: none; letter-spacing: -.02em; }
 .brand-mark { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; color: var(--accent-text); background: var(--accent); }
+.brand-link { color: var(--accent); font-size: .85rem; font-weight: 800; text-decoration: none; }
+.brand-link:hover { color: var(--accent-hover); }
+.app-nav { display: flex; gap: .35rem; }
+.nav-link { border-radius: 9px; padding: .5rem .8rem; color: var(--muted); font-size: .85rem; font-weight: 700; text-decoration: none; transition: color 150ms ease, background 150ms ease; }
+.nav-link:hover { color: var(--text); background: color-mix(in srgb, var(--line) 55%, transparent); }
+
+.listings-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
+.listings-search { display: flex; flex: 1 1 260px; align-items: center; gap: .55rem; min-height: 44px; padding: 0 .8rem; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); background: var(--surface); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.listings-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent); }
+.listings-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: .9rem; }
+.clear-button { display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; }
+.clear-button:hover { color: var(--text); }
+.listings-toolbar select { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 0 .8rem; color: var(--text); background: var(--surface); appearance: auto; }
+.listings-toolbar select:focus-visible { border-color: var(--accent); outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent); }
+.listings-meta { padding: .85rem 1.25rem; color: var(--muted); font-size: .82rem; font-weight: 700; }
+.listings-loading { display: grid; gap: .5rem; padding: 0 1.25rem 1.25rem; }
+.listings-scroll { overflow-x: auto; }
+.listings-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.listings-table thead th { position: sticky; top: 0; text-align: left; padding: .7rem 1rem; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.listings-table tbody td { padding: .7rem 1rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); vertical-align: top; }
+.listings-table tbody tr:hover td { background: color-mix(in srgb, var(--surface-soft) 70%, transparent); }
+.cell-title { max-width: 320px; font-weight: 700; }
+.cell-title a { color: var(--text); text-decoration: none; }
+.cell-title a:hover { color: var(--accent); text-decoration: underline; }
+.cell-price { font-weight: 800; white-space: nowrap; }
+.cell-date { white-space: nowrap; color: var(--muted); }
+.cell-action { text-align: right; white-space: nowrap; }
+.json-toggle { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--line); border-radius: 9px; padding: .35rem .6rem; color: var(--accent); background: var(--surface); font-size: .78rem; font-weight: 800; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; }
+.json-toggle:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.json-toggle.is-open { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.row-json td { background: var(--surface-soft) !important; padding: 0 !important; }
+.json-view { margin: 0; max-height: 420px; overflow: auto; padding: 1rem 1.25rem; font-size: .8rem; line-height: 1.5; color: var(--text); }
+.json-view code { white-space: pre; }
+.status-pill { display: inline-block; border-radius: 999px; padding: .2rem .6rem; font-size: .72rem; font-weight: 800; text-transform: capitalize; }
+.status-active { color: var(--accent-text); background: var(--accent); }
+.status-inactive { color: var(--muted); background: var(--surface-soft); border: 1px solid var(--line); }
 
 .panel, .result-card, .skeleton-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 .panel { overflow: hidden; box-shadow: 0 16px 45px color-mix(in srgb, var(--accent) 8%, transparent); }

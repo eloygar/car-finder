@@ -106,9 +106,10 @@ export function App() {
             <span className="brand-mark"><CarProfile size={25} weight="fill" /></span>
             <span>Car Finder</span>
           </a>
-          <span className="hidden text-sm font-semibold text-[var(--muted)] sm:block">
-            Búsqueda local de coches
-          </span>
+          <nav className="app-nav">
+            <a className="nav-link" href="/">Búsqueda</a>
+            <a className="nav-link" href="/anuncios">Anuncios guardados</a>
+          </nav>
         </div>
       </header>
 

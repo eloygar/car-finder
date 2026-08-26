@@ -55,3 +55,41 @@ export interface SearchResponse {
       }
     | { status: 'failed'; message: string };
 }
+
+export interface ListingRecord {
+  id: string;
+  externalId: string;
+  provider: string;
+  title: string;
+  description: string | null;
+  price: number | string;
+  brand: string;
+  model: string;
+  year: number | null;
+  mileage: number | null;
+  fuelType: string | null;
+  transmission: string | null;
+  power: number | null;
+  bodyType: string | null;
+  province: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  url: string;
+  images: string[];
+  publishedAt: string | null;
+  sellerType: string | null;
+  sellerName: string | null;
+  status: string;
+  contentHash: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  rawPayload: unknown | null;
+  classification: unknown | null;
+  classificationVersion: string | null;
+  classifiedAt: string | null;
+}
+
+export interface ListingsResponse {
+  count: number;
+  items: ListingRecord[];
+}

@@ -7,6 +7,7 @@ import axios from 'axios';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { SEARCH_LOCATIONS } from '../../pipeline/src/config/searches.js';
+import { createPrismaClient } from '../../shared/src/db/client.js';
 import {
   createLocalWallapopClient,
   executeLocalSearch,
@@ -41,6 +42,31 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
 
   app.get('/api/health', async () => ({ ok: true }));
   app.get('/api/taxonomy', async () => taxonomyResponse());
+  app.get('/api/listings', async (request, reply) => {
+    const query = request.query as {
+      status?: string;
+      brand?: string;
+      limit?: string;
+    };
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.brand) where.brand = query.brand;
+
+    const prisma = createPrismaClient();
+    try {
+      const [items, count] = await Promise.all([
+        prisma.listing.findMany({
+          where,
+          orderBy: { firstSeenAt: 'desc' },
+          ...(query.limit ? { take: Number(query.limit) } : {}),
+        }),
+        prisma.listing.count({ where }),
+      ]);
+      return reply.send({ count, items });
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
 
   app.post('/api/search', async (request, reply) => {
     const parsed = localSearchRequestSchema.safeParse(request.body);
