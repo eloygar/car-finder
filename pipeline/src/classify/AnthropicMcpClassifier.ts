@@ -90,6 +90,7 @@ export class AnthropicMcpClassifier implements ListingClassifier {
         'Listing classification attempt failed',
         inputTokens,
         outputTokens,
+        classificationFailureCode(error),
         { cause: error },
       );
     }
@@ -134,6 +135,16 @@ function requireObject(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`Invalid ${label}`);
   }
   return value as Record<string, unknown>;
+}
+
+function classificationFailureCode(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const code = Reflect.get(error, 'code');
+    if (typeof code === 'string' && code.length > 0) return code;
+    const status = Reflect.get(error, 'status');
+    if (typeof status === 'number') return `anthropic_http_${status}`;
+  }
+  return error instanceof Error ? error.name : 'unknown_error';
 }
 
 function withoutTrustedDescription(schema: Tool['input_schema']): Tool['input_schema'] {

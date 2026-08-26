@@ -61,7 +61,7 @@ describe('runClassification', () => {
       saveClassification: vi.fn().mockResolvedValue(false),
     };
     const classify = vi.fn()
-      .mockRejectedValueOnce(new ClassificationAttemptError('provider failed', 9, 4))
+      .mockRejectedValueOnce(new ClassificationAttemptError('provider failed', 9, 4, 'anthropic_http_503'))
       .mockResolvedValueOnce({ classification, inputTokens: 2, outputTokens: 1 });
     const summary = await runClassification({
       run: { all: true, dryRun: false, force: false }, repository: repo, logger,
@@ -71,5 +71,9 @@ describe('runClassification', () => {
       failed: 1, stale: 1, classified: 0, inputTokens: 11, outputTokens: 5,
     });
     expect(classify).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ failureCode: 'anthropic_http_503' }),
+      'Listing classification failed',
+    );
   });
 });

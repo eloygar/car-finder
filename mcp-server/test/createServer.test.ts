@@ -73,7 +73,7 @@ describe('createMcpServer', () => {
     ]);
   });
 
-  it('rejects malformed arguments at the protocol boundary', async () => {
+  it('downgrades an ungrounded operability claim at the protocol boundary', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue([]),
@@ -90,8 +90,13 @@ describe('createMcpServer', () => {
         reason: 'Unsupported claim.',
       },
     });
-    expect(result.isError).toBe(true);
-    expect(result.content[0]).toMatchObject({ type: 'text' });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual({
+      status: 'unknown',
+      confidence: 'low',
+      evidence: [],
+      reason: 'No literal evidence from the description supports a definitive operability status.',
+    });
     expect(repository.findKnownIssues).not.toHaveBeenCalled();
   });
 

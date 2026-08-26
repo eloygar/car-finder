@@ -52,7 +52,13 @@ export async function runClassification(options: {
         }
         summary.failed += 1;
         options.logger.error(
-          { externalId: candidate.externalId, errorType: error instanceof Error ? error.name : typeof error },
+          {
+            externalId: candidate.externalId,
+            errorType: error instanceof Error ? error.name : typeof error,
+            failureCode: error instanceof ClassificationAttemptError
+              ? error.failureCode
+              : 'unexpected_error',
+          },
           'Listing classification failed',
         );
       }

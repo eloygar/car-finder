@@ -18,13 +18,47 @@ describe('classifyVehicleOperability', () => {
     });
   });
 
-  it('rejects evidence that is not a literal description excerpt', () => {
-    expect(() => classifyVehicleOperability({
+  it('downgrades an unsupported definitive claim instead of failing the listing', () => {
+    expect(classifyVehicleOperability({
       description: 'Información insuficiente.',
       status: 'operational',
       confidence: 'high',
       evidence: ['funciona perfectamente'],
       reason: 'Unsupported.',
-    })).toThrow('literal excerpt');
+    })).toEqual({
+      status: 'unknown',
+      confidence: 'low',
+      evidence: [],
+      reason: 'No literal evidence from the description supports a definitive operability status.',
+    });
+  });
+
+  it('tolerates harmless Unicode punctuation and whitespace differences', () => {
+    expect(classifyVehicleOperability({
+      description: 'El vendedor dice: “funciona\n perfectamente” — se usa a diario.',
+      status: 'operational',
+      confidence: 'high',
+      evidence: ['funciona perfectamente', '— se usa a diario'],
+      reason: 'The description explicitly says it works.',
+    })).toMatchObject({
+      status: 'operational',
+      confidence: 'high',
+      evidence: ['funciona perfectamente', '— se usa a diario'],
+    });
+  });
+
+  it('drops an invented excerpt and lowers high confidence when other evidence is grounded', () => {
+    expect(classifyVehicleOperability({
+      description: 'Arranca y circula.',
+      status: 'operational',
+      confidence: 'high',
+      evidence: ['Arranca y circula', 'ITV recién pasada'],
+      reason: 'The description says it starts and drives.',
+    })).toEqual({
+      status: 'operational',
+      confidence: 'medium',
+      evidence: ['Arranca y circula'],
+      reason: 'The description says it starts and drives.',
+    });
   });
 });

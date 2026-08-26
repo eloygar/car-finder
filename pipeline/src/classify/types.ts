@@ -61,6 +61,7 @@ export class ClassificationAttemptError extends Error {
     message: string,
     readonly inputTokens: number,
     readonly outputTokens: number,
+    readonly failureCode: string,
     options?: ErrorOptions,
   ) {
     super(message, options);
