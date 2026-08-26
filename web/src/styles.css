@@ -81,6 +81,8 @@ button, input, select { font: inherit; }
 .json-toggle { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--line); border-radius: 9px; padding: .35rem .6rem; color: var(--accent); background: var(--surface); font-size: .78rem; font-weight: 800; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; }
 .json-toggle:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .json-toggle.is-open { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.json-panel { display: flex; flex-direction: column; }
+.json-panel-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem 1.25rem; border-bottom: 1px solid var(--line); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--surface); position: sticky; top: 0; z-index: 1; }
 .row-json td { background: var(--surface-soft) !important; padding: 0 !important; }
 .json-view { margin: 0; max-height: 420px; overflow: auto; padding: 1rem 1.25rem; font-size: .8rem; line-height: 1.5; color: var(--text); }
 .json-view code { white-space: pre; }

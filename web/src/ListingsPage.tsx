@@ -234,6 +234,7 @@ function ListingRow({
         <td className="cell-date">{formatDate(item.firstSeenAt)}</td>
         <td className="cell-action">
           <button
+            type="button"
             className={`json-toggle ${open ? 'is-open' : ''}`}
             aria-expanded={open}
             onClick={onToggle}
@@ -246,7 +247,21 @@ function ListingRow({
       {open ? (
         <tr className="row-json">
           <td colSpan={7}>
-            <pre className="json-view"><code>{JSON.stringify(item, null, 2)}</code></pre>
+            <div className="json-panel">
+              <div className="json-panel-head">
+                <span>JSON completo</span>
+                <button
+                  type="button"
+                  className="json-toggle is-open"
+                  aria-expanded={open}
+                  onClick={onToggle}
+                >
+                  <X size={16} weight="bold" />
+                  Cerrar
+                </button>
+              </div>
+              <pre className="json-view"><code>{JSON.stringify(item, null, 2)}</code></pre>
+            </div>
           </td>
         </tr>
       ) : null}
