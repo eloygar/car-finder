@@ -4,7 +4,7 @@ SEARCH_ID ?= toyota-madrid
 MAX_PAGES ?= 1
 BRAND ?= Toyota
 MODEL ?= Corolla
-YEAR ?= 2023
+DESCRIPTION ?= Funciona perfectamente y se usa a diario.
 CLASSIFY_LIMIT ?= 10
 CLASSIFY_ID ?=
 
@@ -94,7 +94,7 @@ mcp-server:
 	$(PNPM) mcp:server
 
 mcp-smoke:
-	$(PNPM) mcp:smoke -- --brand "$(BRAND)" --model "$(MODEL)" --year $(YEAR)
+	$(PNPM) mcp:smoke -- --description "$(DESCRIPTION)"
 
 app:
 	$(PNPM) app:dev

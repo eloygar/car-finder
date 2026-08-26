@@ -3,21 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { parseSmokeArgs } from '../src/smoke.js';
 
 describe('parseSmokeArgs', () => {
-  it('accepts pnpm separators and an optional year', () => {
+  it('accepts a description after the pnpm separator', () => {
     expect(parseSmokeArgs([
-      '--', '--brand', 'Toyota', '--model', 'Corolla', '--year', '2023',
-    ])).toEqual({ brand: 'Toyota', model: 'Corolla', year: 2023 });
+      '--', '--description', 'Funciona perfectamente.',
+    ])).toBe('Funciona perfectamente.');
   });
 
   it('rejects missing, duplicate, unknown, and malformed values', () => {
-    expect(() => parseSmokeArgs(['--brand', 'Toyota'])).toThrow();
-    expect(() => parseSmokeArgs([
-      '--brand', 'Toyota', '--brand', 'BMW', '--model', 'Corolla',
-    ])).toThrow('Unknown or duplicate');
-    expect(() => parseSmokeArgs(['--brand', 'Toyota', '--model', 'Corolla', '--wat', 'x']))
-      .toThrow('Unknown or duplicate');
-    expect(() => parseSmokeArgs([
-      '--brand', 'Toyota', '--model', 'Corolla', '--year', 'not-a-year',
-    ])).toThrow();
+    expect(() => parseSmokeArgs(['--description'])).toThrow();
+    expect(() => parseSmokeArgs(['--description', ''])).toThrow();
+    expect(() => parseSmokeArgs(['--wat', 'x'])).toThrow();
   });
 });

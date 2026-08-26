@@ -11,6 +11,7 @@ async function main(): Promise<void> {
   const server = createMcpServer({
     repository: new PrismaMcpToolRepository(prisma),
     logger,
+    enableLegacyTools: process.env.MCP_ENABLE_LEGACY_TOOLS === 'true',
   });
   const transport = new StdioServerTransport();
   let closing = false;

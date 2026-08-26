@@ -49,7 +49,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         data: {
           externalId,
           title: `Integration car ${index + 1}`,
-          description: 'Clean integration fixture',
+          description: 'Funciona perfectamente y se usa a diario.',
           price: `${10_000 + index * 1_000}.00`,
           brand: 'IntegrationBrand',
           model: 'IntegrationModel',
@@ -68,7 +68,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     await prisma.$disconnect();
   });
 
-  it('calls the real MCP tools, stores JSONB, and becomes idempotent', async () => {
+  it('calls only the real operability MCP tool, stores JSONB, and becomes idempotent', async () => {
     const repository = new PrismaClassificationRepository(prisma);
     const modelCalls: MessageCreateParamsNonStreaming[] = [];
     const fakeModel = {
@@ -76,15 +76,12 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         modelCalls.push(params);
         const choice = params.tool_choice as { type: string; name?: string } | undefined;
         const name = choice?.type === 'tool' && choice.name ? choice.name : 'unexpected';
-        if (name === 'submit_classification') {
-          return message(name, {
-            isDamaged: false,
-            damageConfidence: 'high',
-            repairCost: { estimate: 'none', reasoning: 'No damage in fixture.' },
-            knownIssues: { found: true, detail: 'Integration-only known issue' },
-          }, modelCalls.length);
-        }
-        return message(name, { brand: 'ignored', model: 'ignored', year: 1900 }, modelCalls.length);
+        return message(name, {
+          status: 'operational',
+          confidence: 'high',
+          evidence: ['Funciona perfectamente', 'se usa a diario'],
+          reason: 'The description explicitly says it works and is used daily.',
+        }, modelCalls.length);
       },
     };
 
@@ -98,7 +95,6 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         const classifier = await AnthropicMcpClassifier.create({
           model: 'fake-model',
           modelClient: fakeModel,
-          imageLoader: async () => [],
           mcp: {
             listTools: async () => {
               const result = await client.listTools();
@@ -121,20 +117,16 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
 
     expect(summary).toMatchObject({ selected: 1, classified: 1, failed: 0, stale: 0 });
     expect(modelCalls.map((call) => call.tool_choice)).toEqual([
-      expect.objectContaining({ name: 'check_known_issues' }),
-      expect.objectContaining({ name: 'estimate_market_price' }),
-      expect.objectContaining({ name: 'submit_classification' }),
+      expect.objectContaining({ name: 'classify_vehicle_operability' }),
     ]);
     const stored = await prisma.listing.findUniqueOrThrow({
       where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
     });
-    expect(stored).toMatchObject({ classificationVersion: 'v1' });
+    expect(stored).toMatchObject({ classificationVersion: 'v2-operability' });
     expect(stored.classification).toMatchObject({
-      isDamaged: false,
-      toolResults: {
-        check_known_issues: { hasKnownIssues: true },
-        estimate_market_price: { status: 'ok', sampleSize: 3 },
-      },
+      status: 'operational',
+      confidence: 'high',
+      evidence: ['Funciona perfectamente', 'se usa a diario'],
     });
 
     const second = await runClassification({

@@ -52,9 +52,9 @@ describe('MCP stdio server', () => {
     await prisma.$disconnect();
   });
 
-  it('discovers and calls both tools through a real child process, then shuts it down', async () => {
+  it('can opt into and call the legacy tools through a real child process', async () => {
     const client = new Client({ name: 'integration-client', version: '1.0.0' });
-    const transport = createServerTransport({ stderr: 'pipe' });
+    const transport = createServerTransport({ stderr: 'pipe', enableLegacyTools: true });
     let stderr = '';
     transport.stderr?.on('data', (chunk) => {
       stderr += chunk.toString();
@@ -67,10 +67,11 @@ describe('MCP stdio server', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
       'check_known_issues',
+      'classify_vehicle_operability',
       'estimate_market_price',
     ]);
-    expect(listed.tools.every(({ inputSchema }) =>
-      Array.isArray(inputSchema.required)
+    const vehicleTools = listed.tools.filter(({ name }) => name !== 'classify_vehicle_operability');
+    expect(vehicleTools.every(({ inputSchema }) => Array.isArray(inputSchema.required)
       && inputSchema.required.includes('brand')
       && inputSchema.required.includes('model'))).toBe(true);
 

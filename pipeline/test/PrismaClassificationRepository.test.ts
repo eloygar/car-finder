@@ -4,10 +4,10 @@ import { PrismaClassificationRepository } from '../src/classify/PrismaClassifica
 import type { DatabaseClient } from '../src/db/client.js';
 
 const classification = {
-  isDamaged: false,
-  damageConfidence: 'high' as const,
-  repairCost: { estimate: 'none' as const, reasoning: 'No visible damage.' },
-  knownIssues: { found: false, detail: null },
+  status: 'operational' as const,
+  confidence: 'high' as const,
+  evidence: ['funciona perfectamente'],
+  reason: 'The description explicitly says it works.',
   toolResults: {},
 };
 
@@ -72,16 +72,16 @@ describe('PrismaClassificationRepository', () => {
     const classifiedAt = new Date('2026-08-25T12:00:00Z');
 
     await expect(repository.saveClassification({
-      id: 'db-1', contentHash: 'hash-1', classification, version: 'v1', classifiedAt,
+      id: 'db-1', contentHash: 'hash-1', classification, version: 'v2-operability', classifiedAt,
     })).resolves.toBe(true);
     expect(prisma.listing.updateMany).toHaveBeenCalledWith({
       where: { id: 'db-1', contentHash: 'hash-1', status: 'active' },
-      data: { classification, classificationVersion: 'v1', classifiedAt },
+      data: { classification, classificationVersion: 'v2-operability', classifiedAt },
     });
 
     prisma.listing.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(repository.saveClassification({
-      id: 'db-1', contentHash: 'old-hash', classification, version: 'v1', classifiedAt,
+      id: 'db-1', contentHash: 'old-hash', classification, version: 'v2-operability', classifiedAt,
     })).resolves.toBe(false);
   });
 });

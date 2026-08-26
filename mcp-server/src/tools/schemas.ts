@@ -1,9 +1,21 @@
 import * as z from 'zod/v4';
 
-export const vehicleQuerySchema = z.object({
+export const vehicleQuerySchema = z.strictObject({
   brand: z.string().trim().min(1).max(100).describe('Vehicle manufacturer'),
   model: z.string().trim().min(1).max(100).describe('Vehicle model'),
   year: z.number().int().min(1886).max(2100).optional().describe('Model year'),
+});
+
+export const vehicleOperabilitySubmissionSchema = z.strictObject({
+  description: z.string().describe('Untrusted seller description used as the only evidence source'),
+  status: z.enum(['operational', 'non_operational', 'unknown']),
+  confidence: z.enum(['low', 'medium', 'high']),
+  evidence: z.array(z.string().trim().min(1)).describe('Short literal excerpts from description'),
+  reason: z.string().trim().min(1).describe('Brief explanation grounded only in description'),
+});
+
+export const vehicleOperabilityOutputSchema = vehicleOperabilitySubmissionSchema.omit({
+  description: true,
 });
 
 const nullableYear = z.number().int().nullable();

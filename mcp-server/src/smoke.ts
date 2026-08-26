@@ -1,18 +1,14 @@
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-import { vehicleQuerySchema } from './tools/schemas.js';
-import type { VehicleQuery } from './tools/types.js';
-
-const EXPECTED_TOOLS = ['check_known_issues', 'estimate_market_price'] as const;
+const EXPECTED_TOOLS = ['classify_vehicle_operability'] as const;
 
 export interface SmokeResult {
   tools: string[];
-  checkKnownIssues: unknown;
-  estimateMarketPrice: unknown;
+  classification: unknown;
 }
 
-export async function runSmoke(query: VehicleQuery): Promise<SmokeResult> {
+export async function runSmoke(description: string): Promise<SmokeResult> {
   const client = new Client({ name: 'car-finder-smoke', version: '0.1.0' });
   const transport = createServerTransport();
 
@@ -25,29 +21,39 @@ export async function runSmoke(query: VehicleQuery): Promise<SmokeResult> {
       throw new Error(`Unexpected MCP tools: ${toolNames.join(', ')}`);
     }
 
-    const [knownIssues, marketPrice] = await Promise.all([
-      client.callTool({ name: 'check_known_issues', arguments: { ...query } }),
-      client.callTool({ name: 'estimate_market_price', arguments: { ...query } }),
-    ]);
-    assertToolSucceeded('check_known_issues', knownIssues);
-    assertToolSucceeded('estimate_market_price', marketPrice);
+    const classification = await client.callTool({
+      name: 'classify_vehicle_operability',
+      arguments: {
+        description,
+        status: 'unknown',
+        confidence: 'low',
+        evidence: [],
+        reason: 'Smoke test validates the MCP protocol boundary only.',
+      },
+    });
+    assertToolSucceeded('classify_vehicle_operability', classification);
 
     return {
       tools: toolNames,
-      checkKnownIssues: knownIssues.structuredContent ?? knownIssues.content,
-      estimateMarketPrice: marketPrice.structuredContent ?? marketPrice.content,
+      classification: classification.structuredContent ?? classification.content,
     };
   } finally {
     await client.close().catch(() => undefined);
   }
 }
 
-export function createServerTransport(options: { stderr?: 'inherit' | 'pipe' } = {}) {
+export function createServerTransport(options: {
+  stderr?: 'inherit' | 'pipe';
+  enableLegacyTools?: boolean;
+} = {}) {
   return new StdioClientTransport({
     command: process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
     args: ['exec', 'tsx', 'mcp-server/src/server.ts'],
     cwd: process.cwd(),
-    env: stringEnvironment(process.env),
+    env: {
+      ...stringEnvironment(process.env),
+      ...(options.enableLegacyTools ? { MCP_ENABLE_LEGACY_TOOLS: 'true' } : {}),
+    },
     stderr: options.stderr ?? 'inherit',
   });
 }
@@ -58,34 +64,19 @@ function stringEnvironment(environment: NodeJS.ProcessEnv): Record<string, strin
   );
 }
 
-export function parseSmokeArgs(argv: string[]): VehicleQuery {
+export function parseSmokeArgs(argv: string[]): string {
   const args = argv[0] === '--' ? argv.slice(1) : argv;
   if (args.includes('--help')) {
     process.stdout.write(
-      'Usage: pnpm mcp:smoke -- --brand <brand> --model <model> [--year <year>]\n',
+      'Usage: pnpm mcp:smoke -- --description <seller-description>\n',
     );
     process.exit(0);
   }
 
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-    if (!flag?.startsWith('--') || value === undefined || value.startsWith('--')) {
-      throw new Error(`Invalid argument near ${flag ?? '<end>'}`);
-    }
-    if (!['--brand', '--model', '--year'].includes(flag) || values.has(flag)) {
-      throw new Error(`Unknown or duplicate option: ${flag}`);
-    }
-    values.set(flag, value);
+  if (args.length !== 2 || args[0] !== '--description' || !args[1]?.trim()) {
+    throw new Error('Expected exactly --description <seller-description>');
   }
-
-  const raw = {
-    brand: values.get('--brand'),
-    model: values.get('--model'),
-    ...(values.has('--year') ? { year: Number(values.get('--year')) } : {}),
-  };
-  return vehicleQuerySchema.parse(raw);
+  return args[1].trim();
 }
 
 async function main(): Promise<void> {

@@ -1,6 +1,6 @@
 import type { ListingClassification } from '../../../shared/src/classification/ListingClassification.js';
 
-export const CLASSIFICATION_VERSION = 'v1';
+export const CLASSIFICATION_VERSION = 'v2-operability';
 export const DEFAULT_CLASSIFICATION_MODEL = 'claude-sonnet-4-5';
 
 export interface ClassificationRunOptions {

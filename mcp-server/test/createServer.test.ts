@@ -10,9 +10,9 @@ afterEach(async () => {
   await Promise.all(closeCallbacks.splice(0).map((close) => close()));
 });
 
-async function connectedClient(repository: McpToolRepository) {
+async function connectedClient(repository: McpToolRepository, enableLegacyTools = false) {
   const logger = { error: vi.fn() };
-  const server = createMcpServer({ repository, logger });
+  const server = createMcpServer({ repository, logger, enableLegacyTools });
   const client = new Client({ name: 'unit-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -24,7 +24,7 @@ async function connectedClient(repository: McpToolRepository) {
 }
 
 describe('createMcpServer', () => {
-  it('advertises exactly the two read-only tools and returns structured content', async () => {
+  it('advertises only operability by default and returns structured content', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue(['1.00', '2.00', '3.00']),
@@ -32,34 +32,45 @@ describe('createMcpServer', () => {
     const { client } = await connectedClient(repository);
 
     const listed = await client.listTools();
-    expect(listed.tools.map(({ name }) => name).sort()).toEqual([
-      'check_known_issues',
-      'estimate_market_price',
-    ]);
+    expect(listed.tools.map(({ name }) => name)).toEqual(['classify_vehicle_operability']);
     expect(listed.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
+    expect(listed.tools.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
 
     const result = await client.callTool({
-      name: 'check_known_issues',
-      arguments: { brand: 'Toyota', model: 'Corolla' },
+      name: 'classify_vehicle_operability',
+      arguments: {
+        description: 'Funciona perfectamente.',
+        status: 'operational',
+        confidence: 'high',
+        evidence: ['Funciona perfectamente'],
+        reason: 'The seller explicitly says it works.',
+      },
     });
     expect(result.isError).not.toBe(true);
-    expect(result.structuredContent).toEqual({ hasKnownIssues: false, issues: [] });
+    expect(result.structuredContent).toEqual({
+      status: 'operational',
+      confidence: 'high',
+      evidence: ['Funciona perfectamente'],
+      reason: 'The seller explicitly says it works.',
+    });
     expect(JSON.parse(result.content[0]?.type === 'text' ? result.content[0].text : '')).toEqual(
       result.structuredContent,
     );
 
-    const market = await client.callTool({
-      name: 'estimate_market_price',
-      arguments: { brand: 'Toyota', model: 'Corolla' },
-    });
-    expect(market.isError).not.toBe(true);
-    expect(market.structuredContent).toMatchObject({
-      status: 'ok',
-      currency: 'EUR',
-      sampleSize: 3,
-      average: '2.00',
-      median: '2.00',
-    });
+  });
+
+  it('exposes the two database analysis tools only behind the legacy flag', async () => {
+    const repository: McpToolRepository = {
+      findKnownIssues: vi.fn().mockResolvedValue([]),
+      findComparablePrices: vi.fn().mockResolvedValue([]),
+    };
+    const { client } = await connectedClient(repository, true);
+    const listed = await client.listTools();
+    expect(listed.tools.map(({ name }) => name).sort()).toEqual([
+      'check_known_issues',
+      'classify_vehicle_operability',
+      'estimate_market_price',
+    ]);
   });
 
   it('rejects malformed arguments at the protocol boundary', async () => {
@@ -70,8 +81,14 @@ describe('createMcpServer', () => {
     const { client } = await connectedClient(repository);
 
     const result = await client.callTool({
-      name: 'check_known_issues',
-      arguments: { brand: '', model: 'Corolla', year: 2020.5 },
+      name: 'classify_vehicle_operability',
+      arguments: {
+        description: 'No dice nada relevante.',
+        status: 'operational',
+        confidence: 'high',
+        evidence: ['funciona perfectamente'],
+        reason: 'Unsupported claim.',
+      },
     });
     expect(result.isError).toBe(true);
     expect(result.content[0]).toMatchObject({ type: 'text' });
@@ -85,7 +102,7 @@ describe('createMcpServer', () => {
         .mockResolvedValueOnce([]),
       findComparablePrices: vi.fn().mockResolvedValue([]),
     };
-    const { client, logger } = await connectedClient(repository);
+    const { client, logger } = await connectedClient(repository, true);
 
     const failed = await client.callTool({
       name: 'check_known_issues',

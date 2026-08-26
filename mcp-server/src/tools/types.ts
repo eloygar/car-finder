@@ -4,6 +4,19 @@ export interface VehicleQuery {
   year?: number;
 }
 
+export type VehicleOperabilityStatus = 'operational' | 'non_operational' | 'unknown';
+export type VehicleOperabilityConfidence = 'low' | 'medium' | 'high';
+
+export interface VehicleOperabilitySubmission {
+  description: string;
+  status: VehicleOperabilityStatus;
+  confidence: VehicleOperabilityConfidence;
+  evidence: string[];
+  reason: string;
+}
+
+export type VehicleOperabilityResult = Omit<VehicleOperabilitySubmission, 'description'>;
+
 export type KnownIssueSeverity = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface KnownIssueMatch {

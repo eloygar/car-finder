@@ -10,10 +10,10 @@ const candidate: ClassificationCandidate = {
   mileage: 50_000, fuelType: 'hybrid', transmission: null, bodyType: null, images: [],
 };
 const classification = {
-  isDamaged: false as const,
-  damageConfidence: 'high' as const,
-  repairCost: { estimate: 'none' as const, reasoning: 'No visible damage.' },
-  knownIssues: { found: false, detail: null },
+  status: 'unknown' as const,
+  confidence: 'low' as const,
+  evidence: [],
+  reason: 'The description does not establish operability.',
 };
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
@@ -30,7 +30,7 @@ describe('runClassification', () => {
     const summary = await runClassification({
       run: { all: true, dryRun: true, force: false }, repository: repository(), createSession, logger,
     });
-    expect(summary).toMatchObject({ selected: 1, classified: 0, dryRun: true, version: 'v1' });
+    expect(summary).toMatchObject({ selected: 1, classified: 0, dryRun: true, version: 'v2-operability' });
     expect(createSession).not.toHaveBeenCalled();
   });
 
@@ -49,7 +49,7 @@ describe('runClassification', () => {
     });
     expect(summary).toMatchObject({ classified: 1, inputTokens: 120, outputTokens: 30 });
     expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'db-1', contentHash: 'hash', version: 'v1', classifiedAt: new Date('2026-08-25T12:00:00Z'),
+      id: 'db-1', contentHash: 'hash', version: 'v2-operability', classifiedAt: new Date('2026-08-25T12:00:00Z'),
     }));
     expect(close).toHaveBeenCalledOnce();
   });
