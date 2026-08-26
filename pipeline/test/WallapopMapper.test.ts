@@ -132,4 +132,19 @@ describe('mapRawWallapopItem', () => {
   ])('rejects a listing with invalid required %s data', (_label, override) => {
     expect(() => mapRawWallapopItem(currentPayload(override))).toThrow();
   });
+
+  it.each([
+    ['TOYOTA', 'Toyota'],
+    ['toyota', 'Toyota'],
+    ['  toyota  ', 'Toyota'],
+    ['seat', 'SEAT'],
+    ['Bmw', 'BMW'],
+    ['PeuGeot', 'Peugeot'],
+    ['UnknownBrand', 'UnknownBrand'],
+  ])('normalizes brand casing for "%s" to "%s"', (raw, expected) => {
+    const listing = mapRawWallapopItem(currentPayload({
+      type_attributes: { brand: raw, model: 'C-HR' },
+    }));
+    expect(listing.brand).toBe(expected);
+  });
 });

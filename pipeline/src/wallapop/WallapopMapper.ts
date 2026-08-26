@@ -1,4 +1,5 @@
 import type { MappedListing } from '../reconcile/types.js';
+import { normalizeBrand } from '../brandNormalization.js';
 
 const WALLAPOP_ITEM_BASE_URL = 'https://wallapop.com/item/';
 
@@ -15,7 +16,8 @@ export function mapRawWallapopItem(raw: unknown): MappedListing {
     throw new Error(`Listing ${externalId}: unsupported price currency "${currency}"`);
   }
 
-  const brand = requireAttributeString(attributes, ['brand'], 'brand', externalId);
+  const rawBrand = requireAttributeString(attributes, ['brand'], 'brand', externalId);
+  const brand = normalizeBrand(rawBrand) ?? rawBrand;
   const model = requireAttributeString(attributes, ['model'], 'model', externalId);
 
   return {
