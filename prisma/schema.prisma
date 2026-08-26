@@ -44,6 +44,7 @@ model Listing {
 
   @@unique([provider, externalId])
   @@index([brand, model])
+  @@index([brand, model, status])
   @@index([province])
   @@index([price])
   @@index([status])

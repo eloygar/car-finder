@@ -68,6 +68,39 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
     }
   });
 
+  app.get('/api/listings/facets', async (request, reply) => {
+    const query = request.query as { status?: string; brand?: string };
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+
+    const prisma = createPrismaClient();
+    try {
+      const brandGrouped = await prisma.listing.groupBy({
+        by: ['brand'],
+        where,
+        _count: { _all: true },
+      });
+      const modelWhere = { ...where };
+      if (query.brand) modelWhere.brand = query.brand;
+      const modelGrouped = await prisma.listing.groupBy({
+        by: ['brand', 'model'],
+        where: modelWhere,
+        _count: { _all: true },
+      });
+
+      return reply.send({
+        brands: brandGrouped.map((entry) => ({ brand: entry.brand, count: entry._count._all })),
+        models: modelGrouped.map((entry) => ({
+          brand: entry.brand,
+          model: entry.model,
+          count: entry._count._all,
+        })),
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   app.delete('/api/listings/:id', async (request, reply) => {
     const prisma = createPrismaClient();
     try {

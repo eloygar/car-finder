@@ -15,6 +15,7 @@ import type {
   ListingRecord,
   VehicleOperabilityClassification,
 } from './types.js';
+import { taxonomyBrands, taxonomyModels } from './taxonomy.js';
 
 const EXIT_DURATION = 240;
 
@@ -25,7 +26,9 @@ export function ListingsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
   const [classification, setClassification] = useState('classified');
+  const [operability, setOperability] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -53,12 +56,65 @@ export function ListingsPage() {
     return () => controller.abort();
   }, []);
 
+  const [facets, setFacets] = useState<{ brands: Record<string, number>; models: Record<string, number> }>({
+    brands: {},
+    models: {},
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (brand) params.set('brand', brand);
+    fetch(`/api/listings/facets?${params.toString()}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('facets');
+        return (await response.json()) as {
+          brands: Array<{ brand: string; count: number }>;
+          models: Array<{ brand: string; model: string; count: number }>;
+        };
+      })
+      .then((payload) => {
+        setFacets({
+          brands: Object.fromEntries(payload.brands.map((entry) => [entry.brand, entry.count])),
+          models: Object.fromEntries(payload.models.map((entry) => [entry.model, entry.count])),
+        });
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setFacets({ brands: {}, models: {} });
+      });
+    return () => controller.abort();
+  }, [status, brand]);
+
   const brands = useMemo(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.items.map((item) => item.brand)))
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
-  }, [data]);
+    const available = Object.keys(facets.brands);
+    const source = available.length
+      ? available
+      : (data
+        ? (Array.from(new Set(data.items.map((item) => item.brand).filter(Boolean))) as string[])
+        : []);
+    return taxonomyBrands.filter((name) => source.includes(name));
+  }, [facets.brands, data]);
+
+  const modelOptions = useMemo(() => {
+    if (!brand) return [];
+    const fromFacets = Object.entries(facets.models);
+    if (fromFacets.length) {
+      return fromFacets
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'es'));
+    }
+    const fromTaxonomy = taxonomyModels[brand] ?? [];
+    const fromData = new Set(
+      (data?.items ?? [])
+        .filter((item) => item.brand === brand && item.model)
+        .map((item) => item.model as string),
+    );
+    return Array.from(new Set([...fromTaxonomy, ...fromData]))
+      .map((name) => ({ name, count: 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [brand, facets.models, data]);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -66,15 +122,20 @@ export function ListingsPage() {
     return data.items.filter((item) => {
       if (status && item.status !== status) return false;
       if (brand && item.brand !== brand) return false;
+      if (model && item.model !== model) return false;
       if (classification === 'classified' && item.classifiedAt == null) return false;
       if (classification === 'unclassified' && item.classifiedAt != null) return false;
+      if (operability) {
+        const c = asOperabilityClassification(item.classification);
+        if (!c || c.status !== operability) return false;
+      }
       if (term) {
         const haystack = `${item.title} ${item.brand} ${item.model}`.toLowerCase();
         if (!haystack.includes(term)) return false;
       }
       return true;
     });
-  }, [data, search, status, brand, classification]);
+  }, [data, search, status, brand, model, classification, operability]);
 
   function requestDelete(item: ListingRecord) {
     if (item.classifiedAt != null) {
@@ -176,17 +237,26 @@ export function ListingsPage() {
             count={data?.count ?? 0}
             items={filtered}
             brands={brands}
+            brandCounts={facets.brands}
+            modelOptions={modelOptions}
             search={search}
             status={status}
             brand={brand}
+            model={model}
             classification={classification}
+            operability={operability}
             expanded={expanded}
             removingId={removingId}
             deleting={deleting}
             onSearch={setSearch}
             onStatus={setStatus}
-            onBrand={setBrand}
+            onBrand={(value) => {
+              setBrand(value);
+              setModel('');
+            }}
+            onModel={setModel}
             onClassification={setClassification}
+            onOperability={setOperability}
             onToggle={setExpanded}
             onDelete={requestDelete}
           />
@@ -210,17 +280,23 @@ function ListingsGrid({
   count,
   items,
   brands,
+  brandCounts,
+  modelOptions,
   search,
   status,
   brand,
+  model,
   classification,
+  operability,
   expanded,
   removingId,
   deleting,
   onSearch,
   onStatus,
   onBrand,
+  onModel,
   onClassification,
+  onOperability,
   onToggle,
   onDelete,
 }: {
@@ -228,17 +304,23 @@ function ListingsGrid({
   count: number;
   items: ListingRecord[];
   brands: string[];
+  brandCounts: Record<string, number>;
+  modelOptions: Array<{ name: string; count: number }>;
   search: string;
   status: string;
   brand: string;
+  model: string;
   classification: string;
+  operability: string;
   expanded: string | null;
   removingId: string | null;
   deleting: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: string) => void;
   onBrand: (value: string) => void;
+  onModel: (value: string) => void;
   onClassification: (value: string) => void;
+  onOperability: (value: string) => void;
   onToggle: (id: string | null) => void;
   onDelete: (item: ListingRecord) => void;
 }) {
@@ -266,12 +348,38 @@ function ListingsGrid({
         </select>
         <select value={brand} onChange={(event) => onBrand(event.target.value)}>
           <option value="">Todas las marcas</option>
-          {brands.map((name) => <option key={name} value={name}>{name}</option>)}
+          {brands.map((name) => (
+            <option key={name} value={name}>
+              {name}{brandCounts[name] != null ? ` (${brandCounts[name]})` : ''}
+            </option>
+          ))}
+        </select>
+        <select
+          value={model}
+          disabled={!brand || modelOptions.length === 0}
+          onChange={(event) => onModel(event.target.value)}
+        >
+          <option value="">
+            {brand
+              ? `Todos los modelos${modelOptions.length ? ` (${modelOptions.reduce((sum, option) => sum + option.count, 0)})` : ''}`
+              : 'Elige marca'}
+          </option>
+          {modelOptions.map((option) => (
+            <option key={option.name} value={option.name}>
+              {option.name} ({option.count})
+            </option>
+          ))}
         </select>
         <select value={classification} onChange={(event) => onClassification(event.target.value)}>
           <option value="classified">Clasificados</option>
           <option value="unclassified">Sin clasificar</option>
           <option value="">Todos</option>
+        </select>
+        <select value={operability} onChange={(event) => onOperability(event.target.value)}>
+          <option value="">Toda operatividad</option>
+          <option value="operational">Operativos</option>
+          <option value="non_operational">No operativos</option>
+          <option value="unknown">Sin verificar</option>
         </select>
       </div>
 
@@ -438,6 +546,7 @@ function ListingDetails({ item }: { item: ListingRecord }) {
 
   return (
     <div className="listing-details">
+      <ClassificationDetails item={item} />
       <dl className="listing-details-grid">
         {rows.map((row) => (
           <div key={row.label}>
@@ -487,6 +596,57 @@ function ClassificationSummary({ item }: { item: ListingRecord }) {
   }
 
   return <span className="classification-pending">Sin clasificar</span>;
+}
+
+function ClassificationDetails({ item }: { item: ListingRecord }) {
+  const classification = asOperabilityClassification(item.classification);
+
+  if (classification) {
+    return (
+      <section className="classification-details" aria-label="Detalle de la operatividad">
+        <div className="classification-details-head">
+          <span className={`operability-pill operability-${classification.status}`}>
+            {operabilityLabel(classification.status)}
+          </span>
+          <span className="classification-confidence">
+            Confianza {confidenceLabel(classification.confidence)}
+          </span>
+          {item.classificationVersion ? (
+            <span className="classification-version">v{item.classificationVersion}</span>
+          ) : null}
+        </div>
+        <p className="classification-reason-full">{classification.reason}</p>
+        {classification.evidence.length > 0 ? (
+          <div className="evidence">
+            <p className="evidence-title">Evidencias</p>
+            <ul className="evidence-list">
+              {classification.evidence.map((entry, index) => (
+                <li key={index}>{entry}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  if (item.classifiedAt) {
+    return (
+      <section className="classification-details" aria-label="Detalle de la operatividad">
+        <div className="classification-details-head">
+          <span className="operability-pill operability-legacy">Versión anterior</span>
+        </div>
+        <p className="classification-reason-full">Clasificación de una versión previa, pendiente de reclasificar a operatividad.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="classification-details" aria-label="Detalle de la operatividad">
+      <span className="classification-pending">Sin clasificar</span>
+      <p className="classification-reason-full">Este anuncio aún no ha sido clasificado respecto a su operatividad.</p>
+    </section>
+  );
 }
 
 function asOperabilityClassification(
