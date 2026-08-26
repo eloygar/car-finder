@@ -10,7 +10,11 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { ListingsResponse, ListingRecord } from './types.js';
+import type {
+  ListingsResponse,
+  ListingRecord,
+  VehicleOperabilityClassification,
+} from './types.js';
 
 const EXIT_DURATION = 240;
 
@@ -375,6 +379,7 @@ function ListingCard({
         </h3>
         {subtitle ? <p className="listing-subtitle">{subtitle}</p> : null}
         <div className="listing-price">{formatPrice(item.price)}</div>
+        <ClassificationSummary item={item} />
 
         {specs.length > 0 ? (
           <dl className="listing-specs">
@@ -449,6 +454,65 @@ function ListingDetails({ item }: { item: ListingRecord }) {
       ) : null}
     </div>
   );
+}
+
+function ClassificationSummary({ item }: { item: ListingRecord }) {
+  const classification = asOperabilityClassification(item.classification);
+
+  if (classification) {
+    return (
+      <div className="classification-summary">
+        <div className="classification-heading">
+          <span className={`operability-pill operability-${classification.status}`}>
+            {operabilityLabel(classification.status)}
+          </span>
+          <span className="classification-confidence">
+            Confianza {confidenceLabel(classification.confidence)}
+          </span>
+        </div>
+        <p className="classification-reason" title={classification.reason}>
+          {classification.reason}
+        </p>
+      </div>
+    );
+  }
+
+  if (item.classifiedAt) {
+    return (
+      <div className="classification-summary">
+        <span className="operability-pill operability-legacy">Versión anterior</span>
+        <p className="classification-reason">Pendiente de reclasificar a operatividad.</p>
+      </div>
+    );
+  }
+
+  return <span className="classification-pending">Sin clasificar</span>;
+}
+
+function asOperabilityClassification(
+  value: ListingRecord['classification'],
+): VehicleOperabilityClassification | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const candidate = value as Partial<VehicleOperabilityClassification>;
+  if (
+    !['operational', 'non_operational', 'unknown'].includes(candidate.status ?? '')
+    || !['low', 'medium', 'high'].includes(candidate.confidence ?? '')
+    || !Array.isArray(candidate.evidence)
+    || typeof candidate.reason !== 'string'
+  ) return null;
+  return candidate as VehicleOperabilityClassification;
+}
+
+function operabilityLabel(status: VehicleOperabilityClassification['status']): string {
+  if (status === 'operational') return 'Operativo';
+  if (status === 'non_operational') return 'No operativo';
+  return 'Sin verificar';
+}
+
+function confidenceLabel(confidence: VehicleOperabilityClassification['confidence']): string {
+  if (confidence === 'high') return 'alta';
+  if (confidence === 'medium') return 'media';
+  return 'baja';
 }
 
 function ConfirmDialog({

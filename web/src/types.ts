@@ -85,9 +85,16 @@ export interface ListingRecord {
   firstSeenAt: string;
   lastSeenAt: string;
   rawPayload: unknown | null;
-  classification: unknown | null;
+  classification: VehicleOperabilityClassification | Record<string, unknown> | null;
   classificationVersion: string | null;
   classifiedAt: string | null;
+}
+
+export interface VehicleOperabilityClassification {
+  status: 'operational' | 'non_operational' | 'unknown';
+  confidence: 'low' | 'medium' | 'high';
+  evidence: string[];
+  reason: string;
 }
 
 export interface ListingsResponse {
