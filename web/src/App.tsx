@@ -5,6 +5,7 @@ import {
   MapPin,
   MagnifyingGlass,
   SlidersHorizontal,
+  WarningCircle,
 } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -152,6 +153,7 @@ export function App() {
               {!searching && !searchError && result ? (
                 <>
                   <ReconciliationStatus reconciliation={result.reconciliation} />
+                  {result.warning ? <SearchWarning message={result.warning} /> : null}
                   <Results result={result} />
                 </>
               ) : null}
@@ -439,6 +441,15 @@ function ErrorState({ message }: { message: string }) {
   return (
     <div className="error-state" role="alert">
       <h3>La búsqueda se ha detenido</h3>
+      <p>{message}</p>
+    </div>
+  );
+}
+
+function SearchWarning({ message }: { message: string }) {
+  return (
+    <div className="search-warning" role="status">
+      <WarningCircle size={18} weight="bold" aria-hidden="true" />
       <p>{message}</p>
     </div>
   );

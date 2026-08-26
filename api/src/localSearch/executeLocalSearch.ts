@@ -62,14 +62,16 @@ export async function executeLocalSearch(
   const client = dependencies.client ?? createLocalWallapopClient(logger);
   const outputPath = dependencies.outputPath ?? OUTPUT_PATH;
 
-  const captured = await runSearchBatch({
+  const { items: captured, warning } = await runSearchBatch({
     client,
     searches: [definition],
     ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
     logger,
   });
   const matched = filterRawListings(captured, request);
-  await writeJsonAtomically(outputPath, matched);
+  if (captured.length > 0) {
+    await writeJsonAtomically(outputPath, matched);
+  }
   const preview = matched.slice(0, RESULT_PREVIEW_LIMIT).map(toSearchResultItem);
   let reconciliation: LocalSearchResult['reconciliation'];
 
@@ -94,6 +96,7 @@ export async function executeLocalSearch(
     displayed: preview.length,
     outputPath: path.relative(process.cwd(), outputPath),
     items: preview,
+    ...(warning ? { warning } : {}),
     reconciliation,
   };
 }

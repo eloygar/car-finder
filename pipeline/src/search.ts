@@ -32,33 +32,54 @@ export interface CliOptions {
   outputPath: string;
 }
 
+export interface SearchBatchResult {
+  items: RawWallapopItem[];
+  warning?: string;
+}
+
 export async function runSearchBatch(options: {
   client: SearchPageClient;
   searches: readonly SearchDefinition[];
   maxPages?: number;
   logger: BatchLogger;
-}): Promise<RawWallapopItem[]> {
+}): Promise<SearchBatchResult> {
   const uniqueItems = new Map<string, RawWallapopItem>();
+  let warning: string | undefined;
 
   for (const search of options.searches) {
     let nextPage: string | undefined;
     const observedCursors = new Set<string>();
 
     for (let pageNumber = 1; ; pageNumber += 1) {
-      const page = await options.client.searchPage({
-        brand: search.brand,
-        ...(search.model ? { model: search.model } : {}),
-        ...(search.engine ? { engine: search.engine } : {}),
-        ...(search.transmission ? { transmission: search.transmission } : {}),
-        ...(search.bodyType ? { bodyType: search.bodyType } : {}),
-        ...(search.priceMin !== undefined ? { priceMin: search.priceMin } : {}),
-        ...(search.priceMax !== undefined ? { priceMax: search.priceMax } : {}),
-        categoryId: CAR_CATEGORY_ID,
-        latitude: search.location.latitude,
-        longitude: search.location.longitude,
-        distance: search.location.distanceMeters,
-        ...(nextPage ? { nextPage } : {}),
-      });
+      let page: { items: RawWallapopItem[]; nextCursor?: string };
+      try {
+        page = await options.client.searchPage({
+          brand: search.brand,
+          ...(search.model ? { model: search.model } : {}),
+          ...(search.engine ? { engine: search.engine } : {}),
+          ...(search.transmission ? { transmission: search.transmission } : {}),
+          ...(search.bodyType ? { bodyType: search.bodyType } : {}),
+          ...(search.priceMin !== undefined ? { priceMin: search.priceMin } : {}),
+          ...(search.priceMax !== undefined ? { priceMax: search.priceMax } : {}),
+          categoryId: CAR_CATEGORY_ID,
+          latitude: search.location.latitude,
+          longitude: search.location.longitude,
+          distance: search.location.distanceMeters,
+          ...(nextPage ? { nextPage } : {}),
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        options.logger.warn(
+          { searchId: search.id, page: pageNumber, err: reason },
+          'Wallapop page failed after retries; stopping this search with captured results',
+        );
+        warning = [
+          warning,
+          `La página ${pageNumber} de "${search.id}" falló (${reason});`,
+          'se conservan los anuncios capturados hasta ese momento.',
+        ].filter(Boolean).join(' ');
+        break;
+      }
 
       for (const item of page.items) {
         if (!uniqueItems.has(item.id)) {
@@ -101,7 +122,10 @@ export async function runSearchBatch(options: {
     }
   }
 
-  return [...uniqueItems.values()];
+  return {
+    items: [...uniqueItems.values()],
+    ...(warning ? { warning } : {}),
+  };
 }
 
 export function parseCliArgs(args: readonly string[], cwd = process.cwd()): CliOptions {
@@ -181,13 +205,15 @@ async function main(): Promise<void> {
       },
     });
 
-    const items = await runSearchBatch({
+    const { items } = await runSearchBatch({
       client,
       searches,
       ...(cliOptions.maxPages !== undefined ? { maxPages: cliOptions.maxPages } : {}),
       logger,
     });
-    await writeJsonAtomically(cliOptions.outputPath, items);
+    if (items.length > 0) {
+      await writeJsonAtomically(cliOptions.outputPath, items);
+    }
     logger.info(
       { searches: searches.length, items: items.length, outputPath: cliOptions.outputPath },
       'Wallapop search batch completed',

@@ -41,6 +41,7 @@ export interface SearchResponse {
   displayed: number;
   outputPath: string;
   items: SearchItem[];
+  warning?: string;
   reconciliation:
     | {
         status: 'completed';

@@ -45,6 +45,7 @@ export interface LocalSearchResult {
   displayed: number;
   outputPath: string;
   items: SearchResultItem[];
+  warning?: string;
   reconciliation:
     | { status: 'completed'; summary: ReconcileSummary }
     | { status: 'failed'; message: string };

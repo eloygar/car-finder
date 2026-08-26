@@ -56,8 +56,8 @@ describe('runSearchBatch', () => {
 
     const result = await runSearchBatch({ client, searches, logger });
 
-    expect(result).toEqual([first, second, third]);
-    expect(result[0]).toBe(first);
+    expect(result.items).toEqual([first, second, third]);
+    expect(result.items[0]).toBe(first);
     expect(searchPage).toHaveBeenCalledTimes(3);
     expect(searchPage.mock.calls[1]?.[0]).toMatchObject({
       brand: 'Toyota',
@@ -83,7 +83,7 @@ describe('runSearchBatch', () => {
       logger,
     });
 
-    expect(result).toEqual([{ id: '1' }]);
+    expect(result.items).toEqual([{ id: '1' }]);
     expect(searchPage).toHaveBeenCalledTimes(1);
   });
 
@@ -135,7 +135,7 @@ describe('runSearchBatch', () => {
       logger,
     });
 
-    expect(result).toEqual([{ id: '1' }, { id: '2' }]);
+    expect(result.items).toEqual([{ id: '1' }, { id: '2' }]);
     expect(searchPage).toHaveBeenCalledTimes(2);
     expect(logger.warn).toHaveBeenCalledWith(
       { searchId: 'first-search', page: 2 },
@@ -143,13 +143,43 @@ describe('runSearchBatch', () => {
     );
   });
 
-  it('propagates a page failure and does not continue to the next search', async () => {
-    const searchPage = vi.fn().mockRejectedValue(new Error('network unavailable'));
+  it('stops and retains captured items when a page fails', async () => {
+    const first = { id: '1' };
+    const searchPage = vi.fn()
+      .mockResolvedValueOnce({ items: [first], nextCursor: 'cursor-a' })
+      .mockRejectedValueOnce(new Error('malformed Wallapop response'));
 
-    await expect(
-      runSearchBatch({ client: { searchPage }, searches, maxPages: 3, logger }),
-    ).rejects.toThrow('network unavailable');
-    expect(searchPage).toHaveBeenCalledTimes(1);
+    const result = await runSearchBatch({
+      client: { searchPage },
+      searches: [searches[0]!],
+      logger,
+    });
+
+    expect(result.items).toEqual([first]);
+    expect(result.warning).toBeDefined();
+    expect(searchPage).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ searchId: 'first-search', page: 2 }),
+      expect.stringContaining('failed after retries'),
+    );
+  });
+
+  it('stops the failing search but still runs later searches', async () => {
+    const a = { id: 'a' };
+    const b = { id: 'b' };
+    const searchPage = vi.fn()
+      .mockResolvedValueOnce({ items: [a], nextCursor: 'cursor-a' })
+      .mockRejectedValueOnce(new Error('malformed page'))
+      .mockResolvedValueOnce({ items: [b] });
+
+    const result = await runSearchBatch({
+      client: { searchPage },
+      searches,
+      logger,
+    });
+
+    expect(result.items).toEqual([a, b]);
+    expect(searchPage).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -196,21 +226,18 @@ describe('writeJsonAtomically', () => {
     expect(await readFile(outputPath, 'utf8')).toBe('[\n  {\n    "id": "2"\n  }\n]\n');
   });
 
-  it('leaves an existing artifact untouched when the batch fails before writing', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'car-finder-search-'));
-    const outputPath = path.join(directory, 'raw.json');
-    await writeFile(outputPath, '[{"id":"old"}]\n');
+  it('returns no items when every page fails', async () => {
     const searchPage = vi.fn().mockRejectedValue(new Error('failed page'));
 
-    await expect(
-      runSearchBatch({
-        client: { searchPage },
-        searches: [searches[0]!],
-        maxPages: 1,
-        logger,
-      }),
-    ).rejects.toThrow('failed page');
+    const result = await runSearchBatch({
+      client: { searchPage },
+      searches: [searches[0]!],
+      maxPages: 1,
+      logger,
+    });
 
-    expect(await readFile(outputPath, 'utf8')).toBe('[{"id":"old"}]\n');
+    expect(result.items).toEqual([]);
+    expect(result.warning).toBeDefined();
+    expect(searchPage).toHaveBeenCalledTimes(1);
   });
 });
