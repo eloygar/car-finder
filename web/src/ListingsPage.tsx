@@ -1,7 +1,8 @@
 import {
   ArrowSquareOut,
-  BracketsCurly,
   CarProfile,
+  CaretDown,
+  CaretUp,
   MagnifyingGlass,
   Trash,
   WarningCircle,
@@ -151,8 +152,8 @@ export function ListingsPage() {
             Anuncios guardados
           </h1>
           <p className="mt-3 max-w-[58ch] text-base leading-relaxed text-[var(--muted)]">
-            Lista completa de los anuncios reconciliados en la base de datos. Filtra,
-            revisa la foto y expande cualquier fila para ver su JSON completo.
+            Tus anuncios reconciliados, con foto y datos clave. Filtra por marca o
+            estado, revisa cada coche y elimínalo cuando ya no te interese.
           </p>
         </div>
 
@@ -166,7 +167,7 @@ export function ListingsPage() {
         {error ? (
           <div className="status-error" role="alert">{error}</div>
         ) : (
-          <ListingsTable
+          <ListingsGrid
             loading={loading}
             count={data?.count ?? 0}
             items={filtered}
@@ -200,7 +201,7 @@ export function ListingsPage() {
   );
 }
 
-function ListingsTable({
+function ListingsGrid({
   loading,
   count,
   items,
@@ -278,7 +279,16 @@ function ListingsTable({
 
       {loading ? (
         <div className="listings-loading">
-          {Array.from({ length: 6 }, (_, index) => <div className="skeleton h-10" key={index} />)}
+          {Array.from({ length: 6 }, (_, index) => (
+            <div className="skeleton-card" key={index}>
+              <div className="skeleton" style={{ aspectRatio: '16 / 10' }} />
+              <div className="listing-body">
+                <div className="skeleton" style={{ height: '1rem', width: '72%' }} />
+                <div className="skeleton" style={{ height: '1.35rem', width: '42%' }} />
+                <div className="skeleton" style={{ height: '.8rem', width: '88%' }} />
+              </div>
+            </div>
+          ))}
         </div>
       ) : items.length === 0 ? (
         <div className="empty-state">
@@ -287,42 +297,26 @@ function ListingsTable({
           <p>Ajusta los filtros o limpia la búsqueda para ver más anuncios.</p>
         </div>
       ) : (
-        <div className="listings-scroll">
-          <table className="listings-table">
-            <thead>
-              <tr>
-                <th aria-label="Foto" />
-                <th>Título</th>
-                <th>Marca / Modelo</th>
-                <th>Precio</th>
-                <th>Provincia</th>
-                <th>Estado</th>
-                <th>Primera vez visto</th>
-                <th aria-label="Acciones" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <ListingRow
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  open={expanded === item.id}
-                  removing={removingId === item.id}
-                  disabled={deleting}
-                  onToggle={() => onToggle(expanded === item.id ? null : item.id)}
-                  onDelete={() => onDelete(item)}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div className="listings-grid">
+          {items.map((item, index) => (
+            <ListingCard
+              key={item.id}
+              item={item}
+              index={index}
+              open={expanded === item.id}
+              removing={removingId === item.id}
+              disabled={deleting}
+              onToggle={() => onToggle(expanded === item.id ? null : item.id)}
+              onDelete={() => onDelete(item)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function ListingRow({
+function ListingCard({
   item,
   index,
   open,
@@ -340,80 +334,120 @@ function ListingRow({
   onDelete: () => void;
 }) {
   const thumbnail = item.images?.[0];
+  const heading = `${item.brand} ${item.model}`.trim() || item.title;
+  const subtitle = item.title !== heading ? item.title : null;
+  const specs = buildSpecs(item);
+
   return (
-    <>
-      <tr
-        className={[removing ? 'row-removing' : '', open ? 'row-open' : ''].filter(Boolean).join(' ') || undefined}
-        style={index < 14 ? { animationDelay: `${Math.min(index, 13) * 28}ms` } : undefined}
-      >
-        <td className="cell-photo">
-          <div className="thumb">
-            {thumbnail ? (
-              <img src={thumbnail} alt={item.title} loading="lazy" />
-            ) : (
-              <span className="thumb-empty"><CarProfile size={20} weight="duotone" aria-hidden="true" /></span>
-            )}
-          </div>
-        </td>
-        <td className="cell-title">
+    <article
+      className={['listing-card', removing ? 'is-removing' : '', open ? 'is-open' : '']
+        .filter(Boolean)
+        .join(' ')}
+      style={index < 14 ? { animationDelay: `${Math.min(index, 13) * 28}ms` } : undefined}
+    >
+      <div className="listing-media">
+        {thumbnail ? (
+          <img src={thumbnail} alt={item.title} loading="lazy" />
+        ) : (
+          <span className="listing-media-empty"><CarProfile size={42} weight="duotone" aria-hidden="true" /></span>
+        )}
+        <span className={`listing-status status-pill status-${item.status}`}>
+          {item.status === 'active' ? 'Activo' : 'Inactivo'}
+        </span>
+        <button
+          type="button"
+          className="delete-button"
+          aria-label={`Eliminar ${item.title}`}
+          disabled={disabled}
+          onClick={onDelete}
+        >
+          <Trash size={16} weight="bold" />
+        </button>
+      </div>
+
+      <div className="listing-body">
+        <h3 className="listing-title">
           {item.url ? (
-            <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a>
+            <a href={item.url} target="_blank" rel="noreferrer">{heading}</a>
           ) : (
-            <span>{item.title}</span>
+            <span>{heading}</span>
           )}
-        </td>
-        <td>{`${item.brand} ${item.model}`.trim() || '—'}</td>
-        <td className="cell-price">{formatPrice(item.price)}</td>
-        <td>{item.province ?? '—'}</td>
-        <td>
-          <span className={`status-pill status-${item.status}`}>{item.status}</span>
-        </td>
-        <td className="cell-date">{formatDate(item.firstSeenAt)}</td>
-        <td className="cell-action">
-          <div className="action-cluster">
-            <button
-              type="button"
-              className="delete-button"
-              aria-label={`Eliminar ${item.title}`}
-              disabled={disabled}
-              onClick={onDelete}
-            >
-              <Trash size={16} weight="bold" />
-            </button>
-            <button
-              type="button"
-              className={`json-toggle ${open ? 'is-open' : ''}`}
-              aria-expanded={open}
-              onClick={onToggle}
-            >
-              <BracketsCurly size={16} weight="bold" />
-              {open ? 'Cerrar' : 'JSON'}
-            </button>
-          </div>
-        </td>
-      </tr>
-      {open ? (
-        <tr className={removing ? 'row-removing row-json' : 'row-json'}>
-          <td colSpan={8}>
-            <div className="json-panel">
-              <div className="json-panel-head">
-                <span>JSON completo</span>
-                <button
-                  type="button"
-                  className="json-toggle is-open"
-                  aria-expanded={open}
-                  onClick={onToggle}
-                >
-                  <X size={16} weight="bold" />
-                  Cerrar
-                </button>
+        </h3>
+        {subtitle ? <p className="listing-subtitle">{subtitle}</p> : null}
+        <div className="listing-price">{formatPrice(item.price)}</div>
+
+        {specs.length > 0 ? (
+          <dl className="listing-specs">
+            {specs.map((spec) => (
+              <div key={spec.label}>
+                <dt>{spec.label}</dt>
+                <dd>{spec.value}</dd>
               </div>
-              <pre className="json-view"><code>{JSON.stringify(item, null, 2)}</code></pre>
-            </div>
-          </td>
-        </tr>
+            ))}
+          </dl>
+        ) : null}
+
+        <div className="listing-footer">
+          <span className="listing-seen">Visto por 1ª vez {formatDate(item.firstSeenAt)}</span>
+          <button
+            type="button"
+            className={`details-toggle ${open ? 'is-open' : ''}`}
+            aria-expanded={open}
+            onClick={onToggle}
+          >
+            {open ? <CaretUp size={16} weight="bold" /> : <CaretDown size={16} weight="bold" />}
+            {open ? 'Ocultar' : 'Detalles'}
+          </button>
+        </div>
+      </div>
+
+      {open ? <ListingDetails item={item} /> : null}
+    </article>
+  );
+}
+
+function ListingDetails({ item }: { item: ListingRecord }) {
+  const rows: Array<{ label: string; value: string }> = [];
+  const push = (label: string, value: string | null | undefined) => {
+    if (value) rows.push({ label, value });
+  };
+
+  push('Marca', item.brand);
+  push('Modelo', item.model);
+  if (item.year != null) push('Año', String(item.year));
+  if (item.mileage != null) {
+    push('Kilometraje', `${item.mileage.toLocaleString('es-ES')} km`);
+  }
+  push('Combustible', capitalize(item.fuelType));
+  push('Cambio', capitalize(item.transmission));
+  if (item.power != null) push('Potencia', `${item.power.toLocaleString('es-ES')} CV`);
+  push('Carrocería', capitalize(item.bodyType));
+  push('Provincia', item.province);
+  if (item.sellerType || item.sellerName) {
+    push('Vendedor', [capitalize(item.sellerType), item.sellerName].filter(Boolean).join(' · '));
+  }
+  push('Primera vez visto', formatDate(item.firstSeenAt));
+  push('Última vez visto', formatDate(item.lastSeenAt));
+  push('Estado', item.status === 'active' ? 'Activo' : 'Inactivo');
+  push('Clasificado', item.classifiedAt ? `Sí (${item.classificationVersion ?? '—'})` : 'No');
+
+  return (
+    <div className="listing-details">
+      <dl className="listing-details-grid">
+        {rows.map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {item.url ? (
+        <a className="listing-link" href={item.url} target="_blank" rel="noreferrer">
+          <ArrowSquareOut size={16} weight="bold" aria-hidden="true" />
+          Ver anuncio en Wallapop
+        </a>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -464,6 +498,25 @@ function ConfirmDialog({
       </div>
     </div>
   );
+}
+
+function buildSpecs(item: ListingRecord): Array<{ label: string; value: string }> {
+  const specs: Array<{ label: string; value: string }> = [];
+  if (item.year != null) specs.push({ label: 'Año', value: String(item.year) });
+  if (item.mileage != null) {
+    specs.push({ label: 'Kilometraje', value: `${item.mileage.toLocaleString('es-ES')} km` });
+  }
+  const fuel = capitalize(item.fuelType);
+  if (fuel) specs.push({ label: 'Combustible', value: fuel });
+  const transmission = capitalize(item.transmission);
+  if (transmission) specs.push({ label: 'Cambio', value: transmission });
+  if (item.province) specs.push({ label: 'Provincia', value: item.province });
+  return specs;
+}
+
+function capitalize(value: string | null): string | null {
+  if (!value) return null;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatPrice(price: number | string): string {
