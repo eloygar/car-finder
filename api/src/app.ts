@@ -68,6 +68,28 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
     }
   });
 
+  app.delete('/api/listings/:id', async (request, reply) => {
+    const prisma = createPrismaClient();
+    try {
+      await prisma.listing.delete({ where: { id: String((request.params as { id: string }).id) } });
+      return reply.send({ ok: true });
+    } catch (error) {
+      const isNotFound =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: string }).code === 'P2025';
+      return reply.code(isNotFound ? 404 : 500).send({
+        error: isNotFound ? 'not_found' : 'delete_failed',
+        message: isNotFound
+          ? 'El anuncio no existe o ya fue eliminado.'
+          : 'No se ha podido eliminar el anuncio.',
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
   app.post('/api/search', async (request, reply) => {
     const parsed = localSearchRequestSchema.safeParse(request.body);
     if (!parsed.success) {
