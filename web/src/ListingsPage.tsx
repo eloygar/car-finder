@@ -15,6 +15,7 @@ export function ListingsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [brand, setBrand] = useState('');
+  const [classification, setClassification] = useState('classified');
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,6 +51,8 @@ export function ListingsPage() {
     return data.items.filter((item) => {
       if (status && item.status !== status) return false;
       if (brand && item.brand !== brand) return false;
+      if (classification === 'classified' && item.classifiedAt == null) return false;
+      if (classification === 'unclassified' && item.classifiedAt != null) return false;
       if (term) {
         const haystack = `${item.title} ${item.brand} ${item.model}`.toLowerCase();
         if (!haystack.includes(term)) return false;
@@ -92,10 +95,12 @@ export function ListingsPage() {
             search={search}
             status={status}
             brand={brand}
+            classification={classification}
             expanded={expanded}
             onSearch={setSearch}
             onStatus={setStatus}
             onBrand={setBrand}
+            onClassification={setClassification}
             onToggle={setExpanded}
           />
         )}
@@ -112,10 +117,12 @@ function ListingsTable({
   search,
   status,
   brand,
+  classification,
   expanded,
   onSearch,
   onStatus,
   onBrand,
+  onClassification,
   onToggle,
 }: {
   loading: boolean;
@@ -125,10 +132,12 @@ function ListingsTable({
   search: string;
   status: string;
   brand: string;
+  classification: string;
   expanded: string | null;
   onSearch: (value: string) => void;
   onStatus: (value: string) => void;
   onBrand: (value: string) => void;
+  onClassification: (value: string) => void;
   onToggle: (id: string | null) => void;
 }) {
   return (
@@ -156,6 +165,11 @@ function ListingsTable({
         <select value={brand} onChange={(event) => onBrand(event.target.value)}>
           <option value="">Todas las marcas</option>
           {brands.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <select value={classification} onChange={(event) => onClassification(event.target.value)}>
+          <option value="classified">Clasificados</option>
+          <option value="unclassified">Sin clasificar</option>
+          <option value="">Todos</option>
         </select>
       </div>
 
