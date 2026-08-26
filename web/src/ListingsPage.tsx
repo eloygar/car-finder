@@ -66,6 +66,8 @@ export function ListingsPage() {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (brand) params.set('brand', brand);
+    if (classification) params.set('classification', classification);
+    if (operability) params.set('operability', operability);
     fetch(`/api/listings/facets?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('facets');
@@ -85,7 +87,7 @@ export function ListingsPage() {
         setFacets({ brands: {}, models: {} });
       });
     return () => controller.abort();
-  }, [status, brand]);
+  }, [status, brand, classification, operability]);
 
   const brands = useMemo(() => {
     const available = Object.keys(facets.brands);

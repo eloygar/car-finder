@@ -69,9 +69,20 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   });
 
   app.get('/api/listings/facets', async (request, reply) => {
-    const query = request.query as { status?: string; brand?: string };
+    const query = request.query as {
+      status?: string;
+      brand?: string;
+      classification?: string;
+      operability?: string;
+    };
     const where: Record<string, unknown> = {};
     if (query.status) where.status = query.status;
+    if (query.brand) where.brand = query.brand;
+    if (query.classification === 'classified') where.classifiedAt = { not: null };
+    else if (query.classification === 'unclassified') where.classifiedAt = null;
+    if (query.operability) {
+      where.classification = { path: ['status'], equals: query.operability };
+    }
 
     const prisma = createPrismaClient();
     try {
@@ -80,11 +91,9 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
         where,
         _count: { _all: true },
       });
-      const modelWhere = { ...where };
-      if (query.brand) modelWhere.brand = query.brand;
       const modelGrouped = await prisma.listing.groupBy({
         by: ['brand', 'model'],
-        where: modelWhere,
+        where,
         _count: { _all: true },
       });
 
