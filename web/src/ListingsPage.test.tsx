@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ClassificationDetails, ClassificationSummary } from './ListingsPage.js';
+import { ClassificationDetails, ClassificationSummary, ListingPrice } from './ListingsPage.js';
 import type { KnownModelIssues, ListingIssueExtraction, ListingRecord } from './types.js';
 
 const operability = {
@@ -76,6 +76,20 @@ describe('listing classification presentation', () => {
     expect(html).toContain('Evaluación pendiente');
   });
 
+  it('hides pending model assessments when the feature is disabled but retains cached results', () => {
+    const html = renderToStaticMarkup(
+      <ClassificationDetails item={listing(issues)} modelIssueAssessmentsEnabled={false} />,
+    );
+    expect(html).not.toContain('Evaluación pendiente');
+    expect(html).toContain('Alta');
+    expect(html).toContain('800');
+    const summary = renderToStaticMarkup(
+      <ClassificationSummary item={listing(issues)} modelIssueAssessmentsEnabled={false} />,
+    );
+    expect(summary).not.toContain('pendiente');
+    expect(summary).toContain('Gravedad máxima: Alta');
+  });
+
   it('renders legacy and unclassified states', () => {
     const legacy = listing(null);
     legacy.classification = operability;
@@ -101,6 +115,39 @@ describe('listing classification presentation', () => {
       extractedAt: '2026-08-27T10:00:00Z', issues: [],
     })} />)).toContain('Sin defectos declarados');
     expect(renderToStaticMarkup(<ClassificationDetails item={listing(issues)} />)).toContain('Sin analizar');
+  });
+
+  it('adds the estimated range of assessed listing repairs next to the base price', () => {
+    const additionalAssessment = {
+      ...listingIssues.issues[0]!.assessment!,
+      estimatedCostMinEUR: 200,
+      estimatedCostMaxEUR: 350,
+    };
+    const item = listing(issues, true, {
+      ...listingIssues,
+      issues: [
+        ...listingIssues.issues,
+        {
+          category: 'interior', description: 'Tapicería dañada.', evidence: ['tapicería dañada'],
+          assessment: additionalAssessment,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(<ListingPrice item={item} />);
+    expect(html).toContain('10.000');
+    expect(html).toContain('(+ 350–800 €)');
+  });
+
+  it('does not show a repair supplement when every listing issue is pending', () => {
+    const item = listing(issues, true, {
+      extractedAt: listingIssues.extractedAt,
+      issues: [{
+        category: 'mechanical', description: 'Pierde aceite.', evidence: ['pierde aceite'], assessment: null,
+      }],
+    });
+
+    expect(renderToStaticMarkup(<ListingPrice item={item} />)).not.toContain('listing-repair-cost');
   });
 });
 

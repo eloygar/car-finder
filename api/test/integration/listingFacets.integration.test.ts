@@ -102,6 +102,7 @@ describe('listing facets classification filters', () => {
     const response = await app.inject({ method: 'GET', url: `/api/listings?brand=${brand}` });
     await app.close();
     const found = response.json().items.find((item: { externalId: string }) => item.externalId === externalIds[0]);
+    expect(response.json().features).toEqual({ modelIssueAssessments: false });
     expect(found.classification).toEqual({ operability: operability('operational') });
     expect(found.knownModelIssues).toMatchObject({
       mechanical: ['Fallo conocido.'], bodywork: [], interior: [], other: [], hasIssues: true,

@@ -147,5 +147,6 @@ export interface ListingIssueExtraction {
 
 export interface ListingsResponse {
   count: number;
+  features?: { modelIssueAssessments: boolean };
   items: ListingRecord[];
 }

@@ -111,4 +111,23 @@ describe('PrismaClassificationRepository', () => {
       }),
     });
   });
+
+  it('clears previous listing issues when the vehicle is classified as non-operational', async () => {
+    const { prisma, tx } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
+    await repository.saveClassification({
+      candidate,
+      classification: {
+        operability: {
+          status: 'non_operational', confidence: 'high', evidence: ['No arranca'], reason: 'No arranca.',
+        },
+      },
+      version: 'v5',
+      classifiedAt: new Date('2026-08-27T12:00:00Z'),
+      clearListingExtraction: true,
+    });
+
+    expect(tx.listingIssueExtraction.deleteMany).toHaveBeenCalledWith({ where: { listingId: 'db-1' } });
+    expect(tx.listingIssueExtraction.create).not.toHaveBeenCalled();
+  });
 });

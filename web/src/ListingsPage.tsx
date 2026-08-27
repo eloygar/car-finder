@@ -266,6 +266,7 @@ export function ListingsPage() {
             expanded={expanded}
             removingId={removingId}
             deleting={deleting}
+            modelIssueAssessmentsEnabled={data?.features?.modelIssueAssessments ?? false}
             onSearch={setSearch}
             onStatus={setStatus}
             onBrand={(value) => {
@@ -311,6 +312,7 @@ function ListingsGrid({
   expanded,
   removingId,
   deleting,
+  modelIssueAssessmentsEnabled,
   onSearch,
   onStatus,
   onBrand,
@@ -337,6 +339,7 @@ function ListingsGrid({
   expanded: string | null;
   removingId: string | null;
   deleting: boolean;
+  modelIssueAssessmentsEnabled: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: string) => void;
   onBrand: (value: string) => void;
@@ -447,6 +450,7 @@ function ListingsGrid({
               open={expanded === item.id}
               removing={removingId === item.id}
               disabled={deleting}
+              modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
               onToggle={() => onToggle(expanded === item.id ? null : item.id)}
               onDelete={() => onDelete(item)}
             />
@@ -463,6 +467,7 @@ function ListingCard({
   open,
   removing,
   disabled,
+  modelIssueAssessmentsEnabled,
   onToggle,
   onDelete,
 }: {
@@ -471,6 +476,7 @@ function ListingCard({
   open: boolean;
   removing: boolean;
   disabled: boolean;
+  modelIssueAssessmentsEnabled: boolean;
   onToggle: () => void;
   onDelete: () => void;
 }) {
@@ -515,8 +521,11 @@ function ListingCard({
           )}
         </h3>
         {subtitle ? <p className="listing-subtitle">{subtitle}</p> : null}
-        <div className="listing-price">{formatPrice(item.price)}</div>
-        <ClassificationSummary item={item} />
+        <ListingPrice item={item} />
+        <ClassificationSummary
+          item={item}
+          modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+        />
 
         {specs.length > 0 ? (
           <dl className="listing-specs">
@@ -543,12 +552,38 @@ function ListingCard({
         </div>
       </div>
 
-      {open ? <ListingDetails item={item} /> : null}
+      {open ? (
+        <ListingDetails item={item} modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled} />
+      ) : null}
     </article>
   );
 }
 
-function ListingDetails({ item }: { item: ListingRecord }) {
+export function ListingPrice({ item }: { item: ListingRecord }) {
+  const repairCost = listingRepairCostRange(item.listingIssueExtraction);
+
+  return (
+    <div className="listing-price">
+      <span>{formatPrice(item.price)}</span>
+      {repairCost ? (
+        <span
+          className="listing-repair-cost"
+          title={`Coste estimado de las reparaciones declaradas: ${formatRepairCostRange(repairCost.minimum, repairCost.maximum)}`}
+        >
+          (+ {formatRepairCostRange(repairCost.minimum, repairCost.maximum)})
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ListingDetails({
+  item,
+  modelIssueAssessmentsEnabled,
+}: {
+  item: ListingRecord;
+  modelIssueAssessmentsEnabled: boolean;
+}) {
   const rows: Array<{ label: string; value: string }> = [];
   const push = (label: string, value: string | null | undefined) => {
     if (value) rows.push({ label, value });
@@ -575,7 +610,10 @@ function ListingDetails({ item }: { item: ListingRecord }) {
 
   return (
     <div className="listing-details">
-      <ClassificationDetails item={item} />
+      <ClassificationDetails
+        item={item}
+        modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+      />
       <dl className="listing-details-grid">
         {rows.map((row) => (
           <div key={row.label}>
@@ -594,7 +632,13 @@ function ListingDetails({ item }: { item: ListingRecord }) {
   );
 }
 
-export function ClassificationSummary({ item }: { item: ListingRecord }) {
+export function ClassificationSummary({
+  item,
+  modelIssueAssessmentsEnabled = true,
+}: {
+  item: ListingRecord;
+  modelIssueAssessmentsEnabled?: boolean;
+}) {
   const classification = asOperabilityClassification(item.classification);
   const currentClassification = item.classificationVersion === 'v5-operability-listing-issues'
     ? asListingClassification(item.classification)
@@ -621,7 +665,12 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
         </p>
         <div className="known-issues-summary">
           <KnownIssuesBadge knownIssues={knownIssues} />
-          {knownIssues?.hasIssues ? <AssessmentCardSummary knownIssues={knownIssues} /> : null}
+          {knownIssues?.hasIssues ? (
+            <AssessmentCardSummary
+              knownIssues={knownIssues}
+              enabled={modelIssueAssessmentsEnabled}
+            />
+          ) : null}
         </div>
         <ListingIssuesCardSummary extraction={listingIssues} />
       </div>
@@ -640,7 +689,13 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
   return <span className="classification-pending">Sin clasificar</span>;
 }
 
-export function ClassificationDetails({ item }: { item: ListingRecord }) {
+export function ClassificationDetails({
+  item,
+  modelIssueAssessmentsEnabled = true,
+}: {
+  item: ListingRecord;
+  modelIssueAssessmentsEnabled?: boolean;
+}) {
   const classification = asOperabilityClassification(item.classification);
   const knownIssues = asKnownModelIssues(item.knownModelIssues);
   const listingIssues = asListingIssueExtraction(item.listingIssueExtraction);
@@ -702,7 +757,9 @@ export function ClassificationDetails({ item }: { item: ListingRecord }) {
                             ))}
                           </ul>
                         </div>
-                      ) : <span className="assessment-pending">Evaluación pendiente</span>}
+                      ) : modelIssueAssessmentsEnabled ? (
+                        <span className="assessment-pending">Evaluación pendiente</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -867,15 +924,21 @@ function knownIssueCategories(knownIssues: KnownModelIssues) {
     .filter(({ issues }) => issues.length > 0);
 }
 
-function AssessmentCardSummary({ knownIssues }: { knownIssues: KnownModelIssues }) {
+function AssessmentCardSummary({
+  knownIssues,
+  enabled,
+}: {
+  knownIssues: KnownModelIssues;
+  enabled: boolean;
+}) {
   const assessments = knownIssues.issueAssessments.map((entry) => entry.assessment).filter(Boolean);
   const maximum = maximumSeverity(assessments);
   const pending = knownIssues.issueAssessments.length - assessments.length;
   const text = [
     maximum ? `Gravedad máxima: ${severityLabel(maximum)}` : null,
-    pending > 0 ? `${pending} pendiente${pending === 1 ? '' : 's'}` : null,
+    enabled && pending > 0 ? `${pending} pendiente${pending === 1 ? '' : 's'}` : null,
   ].filter(Boolean).join(' · ');
-  return <p className="known-issues-preview" title={text}>{text || 'Evaluadas'}</p>;
+  return text ? <p className="known-issues-preview" title={text}>{text}</p> : null;
 }
 
 function maximumSeverity(assessments: Array<PublicIssueAssessment | null>): IssueSeverity | null {
@@ -898,6 +961,33 @@ function severityLabel(severity: IssueSeverity): string {
 function formatCostRange(minimum: number, maximum: number): string {
   const formatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   return `${formatter.format(minimum)}–${formatter.format(maximum)}`;
+}
+
+function listingRepairCostRange(extraction: ListingIssueExtraction | null): {
+  minimum: number;
+  maximum: number;
+} | null {
+  const parsed = asListingIssueExtraction(extraction);
+  if (!parsed) return null;
+  const assessed = parsed.issues
+    .map((issue) => issue.assessment)
+    .filter((assessment): assessment is PublicIssueAssessment => assessment !== null)
+    .filter((assessment) => (
+      Number.isFinite(assessment.estimatedCostMinEUR)
+      && Number.isFinite(assessment.estimatedCostMaxEUR)
+      && assessment.estimatedCostMinEUR >= 0
+      && assessment.estimatedCostMaxEUR >= assessment.estimatedCostMinEUR
+    ));
+  if (assessed.length === 0) return null;
+  return assessed.reduce((total, assessment) => ({
+    minimum: total.minimum + assessment.estimatedCostMinEUR,
+    maximum: total.maximum + assessment.estimatedCostMaxEUR,
+  }), { minimum: 0, maximum: 0 });
+}
+
+function formatRepairCostRange(minimum: number, maximum: number): string {
+  const formatter = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+  return `${formatter.format(minimum)}–${formatter.format(maximum)} €`;
 }
 
 function operabilityLabel(status: VehicleOperabilityClassification['status']): string {

@@ -8,6 +8,7 @@ import { createClassifierSession } from './classify/createClassifierSession.js';
 import { PrismaIssueAssessmentRepository } from './assessIssues/PrismaIssueAssessmentRepository.js';
 import { runAssessIssues } from './assessIssues/runAssessIssues.js';
 import type { AssessIssuesRunOptions } from './assessIssues/types.js';
+import { modelIssueAssessmentsEnabled } from '../../shared/src/featureFlags.js';
 
 export function parseAssessIssuesArgs(args: readonly string[]): AssessIssuesRunOptions {
   let all = false;
@@ -38,6 +39,10 @@ async function main(): Promise<void> {
   const prisma = createPrismaClient();
   try {
     const run = parseAssessIssuesArgs(process.argv.slice(2));
+    if (!run.dryRun && !modelIssueAssessmentsEnabled()) {
+      logger.info({ feature: 'ENABLE_MODEL_ISSUE_ASSESSMENTS' }, 'Model issue assessments are disabled');
+      return;
+    }
     if (!run.dryRun && !process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is required');
     const summary = await runAssessIssues({
       run, repository: new PrismaIssueAssessmentRepository(prisma), logger,

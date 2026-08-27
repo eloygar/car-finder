@@ -16,6 +16,7 @@ import {
   DEFAULT_OPERATIONAL_STATUS_MODEL,
   DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL,
 } from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
+import { modelIssueAssessmentsEnabled } from '../../shared/src/featureFlags.js';
 
 export function parseClassificationArgs(args: readonly string[]): ClassificationRunOptions {
   let all = false;
@@ -86,6 +87,7 @@ async function main(): Promise<void> {
       run,
       repository: new PrismaClassificationRepository(prisma),
       logger,
+      modelIssueAssessmentsEnabled: modelIssueAssessmentsEnabled(),
       ...(!run.dryRun ? {
         createSession: () => createClassifierSession({ logger }),
       } : {}),

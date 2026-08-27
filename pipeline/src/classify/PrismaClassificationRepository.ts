@@ -64,6 +64,7 @@ export class PrismaClassificationRepository implements ClassificationRepository 
     classifiedAt: Date;
     researchedIssues?: Parameters<ClassificationRepository['saveClassification']>[0]['researchedIssues'];
     listingExtraction?: Parameters<ClassificationRepository['saveClassification']>[0]['listingExtraction'];
+    clearListingExtraction?: boolean;
   }): Promise<boolean> {
     try {
       await this.prisma.$transaction(async (transaction) => {
@@ -111,10 +112,12 @@ export class PrismaClassificationRepository implements ClassificationRepository 
             }))?.id ?? null;
           }
         }
-        if (options.listingExtraction) {
+        if (options.clearListingExtraction || options.listingExtraction) {
           await transaction.listingIssueExtraction.deleteMany({
             where: { listingId: options.candidate.id },
           });
+        }
+        if (options.listingExtraction) {
           await transaction.listingIssueExtraction.create({
             data: {
               listingId: options.candidate.id,

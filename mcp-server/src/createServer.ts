@@ -202,8 +202,34 @@ function logToolFailure(
   tool: string,
   error: unknown,
 ): void {
+  const details = providerErrorDetails(error);
   logger.error(
-    { tool, errorType: error instanceof Error ? error.name : typeof error },
+    { tool, errorType: error instanceof Error ? error.name : typeof error, ...details },
     'MCP tool execution failed',
   );
+}
+
+function providerErrorDetails(error: unknown): Record<string, unknown> {
+  if (typeof error !== 'object' || error === null) return {};
+  const providerEnvelope = Reflect.get(error, 'error');
+  const providerError = typeof providerEnvelope === 'object' && providerEnvelope !== null
+    ? Reflect.get(providerEnvelope, 'error')
+    : undefined;
+  return {
+    ...(error instanceof SyntaxError
+      ? { localMessage: error.message.slice(0, 500) }
+      : {}),
+    ...(typeof Reflect.get(error, 'status') === 'number' ? { providerStatus: Reflect.get(error, 'status') } : {}),
+    ...(typeof Reflect.get(error, 'code') === 'string' ? { providerCode: Reflect.get(error, 'code') } : {}),
+    ...(typeof providerError === 'object' && providerError !== null
+      ? {
+          ...(typeof Reflect.get(providerError, 'type') === 'string'
+            ? { providerErrorType: Reflect.get(providerError, 'type') }
+            : {}),
+          ...(typeof Reflect.get(providerError, 'message') === 'string'
+            ? { providerMessage: String(Reflect.get(providerError, 'message')).slice(0, 500) }
+            : {}),
+        }
+      : {}),
+  };
 }

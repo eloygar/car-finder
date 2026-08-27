@@ -18,6 +18,7 @@ import {
   type LocalSearchResult,
 } from './localSearch/types.js';
 import { buildListingFacetWhere, type ListingFacetQuery } from './listingFilters.js';
+import { modelIssueAssessmentsEnabled } from '../../shared/src/featureFlags.js';
 import { issueKey } from '../../shared/src/modelIssueAssessment.js';
 
 export interface CreateAppOptions {
@@ -93,6 +94,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       }
       return reply.send({
         count,
+        features: { modelIssueAssessments: modelIssueAssessmentsEnabled() },
         items: items.map((item) => withListingIssueExtraction(withIssueAssessments(
           item,
           item.knownModelIssues ? byVehicleModel.get(item.knownModelIssues.vehicleModelId) ?? [] : [],

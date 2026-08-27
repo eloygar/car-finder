@@ -112,6 +112,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       run: { all: false, dryRun: false, force: false, refreshKnownIssues: false, only: externalIds[0] },
       repository,
       logger,
+      modelIssueAssessmentsEnabled: true,
       createSession: async () => {
         const classifier = await SequentialMcpClassifier.create({
           mcp: {
@@ -278,5 +279,71 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     expect(await prisma.listingIssueExtraction.findUniqueOrThrow({
       where: { listingId: listing.id }, select: { inputHash: true },
     })).toEqual({ inputHash: 'replacement-hash' });
+  });
+
+  it('persists only operability and clears previous enrichment when a listing is non-operational', async () => {
+    const listing = await prisma.listing.findUniqueOrThrow({
+      where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[1]! } },
+    });
+    const repository = new PrismaClassificationRepository(prisma);
+    await expect(repository.saveClassification({
+      candidate: {
+        id: listing.id, externalId: listing.externalId, contentHash: listing.contentHash,
+        title: listing.title, description: listing.description, price: listing.price.toFixed(2),
+        brand: listing.brand, model: listing.model, year: listing.year, mileage: listing.mileage,
+        fuelType: listing.fuelType, transmission: listing.transmission, bodyType: listing.bodyType, images: listing.images,
+      },
+      classification: {
+        operability: { status: 'operational', confidence: 'high', evidence: ['Funciona'], reason: 'Funciona.' },
+      },
+      version: 'v5-operability-listing-issues',
+      classifiedAt: new Date(),
+      listingExtraction: {
+        inputHash: 'previous-extraction', anthropicModel: 'test', analysisVersion: 'v1-explicit-defects',
+        issues: {
+          mechanical: [{ description: 'Pierde aceite.', evidence: ['Pierde aceite'] }],
+          bodywork: [], interior: [], other: [],
+        },
+      },
+    })).resolves.toBe(true);
+
+    const callTool = vi.fn().mockResolvedValueOnce({
+      operability: {
+        status: 'non_operational', confidence: 'high',
+        evidence: ['No arranca'], reason: 'El vehículo no arranca.',
+      },
+      model: 'claude-sonnet-5',
+      usage: { inputTokens: 5, outputTokens: 2, webSearchRequests: 0 },
+    });
+    const summary = await runClassification({
+      run: { all: false, dryRun: false, force: true, refreshKnownIssues: false, only: externalIds[1] },
+      repository,
+      logger,
+      modelIssueAssessmentsEnabled: true,
+      createSession: async () => {
+        const classifier = await SequentialMcpClassifier.create({
+          mcp: {
+            listTools: async () => [
+              { name: 'check_operational_status' }, { name: 'check_known_issues_web' },
+              { name: 'extract_vehicle_issues_from_text' },
+              { name: 'assess_issue_severity_and_cost' },
+            ],
+            callTool,
+          },
+        });
+        return { classifier, close: async () => undefined };
+      },
+    });
+
+    expect(summary).toMatchObject({
+      classified: 1, failed: 0, listingIssuesDetected: 0,
+      listingAssessmentsSelected: 0, assessmentsSelected: 0,
+    });
+    expect(callTool).toHaveBeenCalledOnce();
+    expect(callTool).toHaveBeenCalledWith('check_operational_status', expect.any(Object));
+    expect(await prisma.listingIssueExtraction.findUnique({ where: { listingId: listing.id } })).toBeNull();
+    expect(await prisma.listing.findUniqueOrThrow({
+      where: { id: listing.id }, select: { classification: true },
+    })).toMatchObject({ classification: { operability: { status: 'non_operational' } } });
   });
 });

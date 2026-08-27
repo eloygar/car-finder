@@ -81,3 +81,10 @@ and do not expire automatically.
 
 Live commands can incur Anthropic charges. Start with `make classify-one` and inspect the structured
 summary, including aggregate input/output token counts, before running `make classify-all`.
+
+## Feature flags
+
+`ENABLE_MODEL_ISSUE_ASSESSMENTS=false` disables severity and repair-cost assessments for general
+model issues in both the classification pipeline and `pipeline:assess-issues`. Listing-specific issue
+assessments remain enabled. Set the flag to `true` to restore model-level assessments; the API exposes
+the current state so the UI only shows model-level pending evaluations while the feature is enabled.

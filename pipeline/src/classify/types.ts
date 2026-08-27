@@ -48,6 +48,7 @@ export interface ClassificationSummary {
   assessed: number;
   assessmentCached: number;
   assessmentFailed: number;
+  modelIssueAssessmentsEnabled: boolean;
   listingIssuesDetected: number;
   listingAssessmentsSelected: number;
   listingAssessed: number;
@@ -95,6 +96,7 @@ export interface ClassificationRepository {
       anthropicModel: string;
       analysisVersion: string;
     };
+    clearListingExtraction?: boolean;
   }): Promise<boolean>;
 }
 

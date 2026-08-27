@@ -21,6 +21,7 @@ export async function runClassification(options: {
   createSession?: () => Promise<ClassifierSession>;
   logger: BatchLogger;
   now?: () => Date;
+  modelIssueAssessmentsEnabled?: boolean;
 }): Promise<ClassificationSummary> {
   const candidates = await options.repository.findCandidates(options.run, CLASSIFICATION_VERSION);
   const summary: ClassificationSummary = {
@@ -34,6 +35,7 @@ export async function runClassification(options: {
     assessed: 0,
     assessmentCached: 0,
     assessmentFailed: 0,
+    modelIssueAssessmentsEnabled: options.modelIssueAssessmentsEnabled ?? false,
     listingIssuesDetected: 0,
     listingAssessmentsSelected: 0,
     listingAssessed: 0,
@@ -54,6 +56,18 @@ export async function runClassification(options: {
         const result = await session.classifier.classifyOperability(candidate);
         summary.inputTokens += result.inputTokens;
         summary.outputTokens += result.outputTokens;
+        if (result.operability.status === 'non_operational') {
+          const saved = await options.repository.saveClassification({
+            candidate,
+            classification: parseListingClassification({ operability: result.operability }),
+            version: CLASSIFICATION_VERSION,
+            classifiedAt: options.now?.() ?? new Date(),
+            clearListingExtraction: true,
+          });
+          if (saved) summary.classified += 1;
+          else summary.stale += 1;
+          continue;
+        }
         const extractionHash = listingIssueInputHash({
           description: candidate.description ?? '',
           brand: candidate.brand,
@@ -84,7 +98,7 @@ export async function runClassification(options: {
           };
         }
         let researchedIssues;
-        if (result.operability.status !== 'non_operational' && candidate.year !== null) {
+        if (candidate.year !== null) {
           const cacheKey = modelYearKey(candidate.brand, candidate.model, candidate.year);
           const alreadyRefreshed = refreshedModelYears.has(cacheKey);
           const cached = alreadyRefreshed || await options.repository.findKnownModelIssues(candidate);
@@ -157,7 +171,7 @@ export async function runClassification(options: {
               }, 'Listing issue assessment failed');
             }
           }
-          if (result.operability.status === 'non_operational') continue;
+          if (!options.modelIssueAssessmentsEnabled) continue;
           let issueCandidates;
           try {
             issueCandidates = await options.repository.findIssueAssessmentCandidates(candidate);

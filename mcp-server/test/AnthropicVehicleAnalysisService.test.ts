@@ -100,8 +100,10 @@ describe('AnthropicVehicleAnalysisService', () => {
 
     expect(create.mock.calls[0]?.[0]).toMatchObject({
       model: 'claude-haiku-4-5-20251001',
+      max_tokens: 3_000,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
     });
+    expect(JSON.stringify(create.mock.calls[0]?.[0].output_config)).not.toContain('minimum');
     expect(String(create.mock.calls[0]?.[0].system)).toContain('always use web_search');
     expect(String(create.mock.calls[0]?.[0].messages[0]?.content)).toContain('Pricing year: 2026');
     expect(result).toMatchObject({
@@ -152,6 +154,33 @@ describe('AnthropicVehicleAnalysisService', () => {
     await expect(service.assessIssueSeverityAndCost({
       issue: 'Problema poco documentado.', brand: 'Marca', model: 'Modelo',
     })).rejects.toThrow('evidence was insufficient');
+  });
+
+  it('reports truncated structured output instead of exposing a raw JSON parse failure', async () => {
+    const response = message({}, { web_search_requests: 1 });
+    response.stop_reason = 'max_tokens';
+    response.content = [{ type: 'text', text: '{"severity":"medium"', citations: null }];
+    const service = new AnthropicVehicleAnalysisService({ create: vi.fn().mockResolvedValue(response) });
+    await expect(service.assessIssueSeverityAndCost({
+      issue: 'Sin ITV.', brand: 'Toyota', model: 'Corolla', year: 2020,
+    })).rejects.toThrow('truncated at max_tokens');
+  });
+
+  it('accepts a valid final JSON block after server-tool text blocks', async () => {
+    const response = message({}, { web_search_requests: 1 });
+    response.content = [
+      { type: 'text', text: 'Interim search text', citations: null },
+      { type: 'text', text: JSON.stringify({
+        severity: 'low', evidenceSufficient: true,
+        estimatedCostMinEUR: 100, estimatedCostMaxEUR: 200,
+        reasoning: 'Coste administrativo documentado.',
+        sources: [{ title: 'Fuente', url: 'https://example.test/source' }],
+      }), citations: null },
+    ];
+    const service = new AnthropicVehicleAnalysisService({ create: vi.fn().mockResolvedValue(response) });
+    await expect(service.assessIssueSeverityAndCost({
+      issue: 'Sin ITV.', brand: 'Toyota', model: 'Corolla', year: 2020,
+    })).resolves.toMatchObject({ assessment: { severity: 'low' } });
   });
 });
 

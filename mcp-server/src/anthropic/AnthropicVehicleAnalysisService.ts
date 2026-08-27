@@ -136,7 +136,7 @@ export class AnthropicVehicleAnalysisService implements VehicleAnalysisService {
     for (let continuation = 0; continuation < 3; continuation += 1) {
       response = await this.client.create({
         model: this.issueAssessmentModel,
-        max_tokens: 1_500,
+        max_tokens: 3_000,
         system: ISSUE_ASSESSMENT_SYSTEM_PROMPT,
         messages,
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
@@ -226,8 +226,10 @@ const ISSUE_ASSESSMENT_JSON_SCHEMA = {
   properties: {
     severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
     evidenceSufficient: { type: 'boolean' },
-    estimatedCostMinEUR: { type: 'integer', minimum: 0 },
-    estimatedCostMaxEUR: { type: 'integer', minimum: 0 },
+    // Anthropic structured outputs do not support JSON Schema's `minimum` keyword.
+    // Non-negative values and range ordering are enforced by Zod after the response.
+    estimatedCostMinEUR: { type: 'integer' },
+    estimatedCostMaxEUR: { type: 'integer' },
     reasoning: { type: 'string', description: 'Razonamiento breve escrito en español.' },
     sources: {
       type: 'array',
@@ -295,12 +297,30 @@ function issueAssessmentPrompt(query: IssueAssessmentQuery, pricingYear: number)
 }
 
 function parseJsonText(message: Message): unknown {
-  const text = message.content
+  const texts = message.content
     .filter((block): block is Extract<Message['content'][number], { type: 'text' }> => block.type === 'text')
     .map((block) => block.text)
-    .join('');
-  if (!text) throw new Error('Anthropic response did not contain structured text');
-  return JSON.parse(text);
+    .filter((text) => text.length > 0);
+  if (message.stop_reason === 'max_tokens') {
+    throw new SyntaxError(`Anthropic structured response was truncated at max_tokens (${texts.length} text blocks)`);
+  }
+  if (texts.length === 0) throw new Error('Anthropic response did not contain structured text');
+  const combined = texts.join('');
+  try {
+    return JSON.parse(combined);
+  } catch (combinedError) {
+    for (let index = texts.length - 1; index >= 0; index -= 1) {
+      try {
+        return JSON.parse(texts[index]!);
+      } catch {
+        // A server-tool response may contain multiple text blocks; try earlier candidates.
+      }
+    }
+    throw new SyntaxError(
+      `Anthropic structured response was invalid JSON (stop_reason=${message.stop_reason ?? 'null'}, textBlocks=${texts.length}, characters=${combined.length})`,
+      { cause: combinedError },
+    );
+  }
 }
 
 function emptyUsage(): AnthropicToolUsage {
