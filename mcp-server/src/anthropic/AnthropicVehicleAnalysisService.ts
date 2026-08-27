@@ -95,8 +95,9 @@ const KNOWN_ISSUES_SYSTEM_PROMPT = `Research documented recurring problems and r
 - ADAC breakdown statistics: https://www.adac.de/rund-ums-fahrzeug/unfall-schaden-panne/adac-pannenstatistik/
 - TÜV Report: https://www.tuev-nord.de/en/knowledge/advice-and-tips-mobility/tuev-report/
 - CarComplaints: https://www.carcomplaints.com/
+- ExpertoAutoRecambios Magazine: https://www.expertoautorecambios.es/magazine/
 - Owner and mechanic discussions on Reddit, including https://www.reddit.com/r/AskMechanics/ and https://www.reddit.com/r/whatcarshouldIbuy/, as well as relevant model-specific forums found during the search.
-Treat forums, Reddit, and owner-submitted complaints as anecdotal signals: label them as such and corroborate recurring claims with stronger sources whenever possible. Do not infer that a particular advertised vehicle has an issue: summarize only model-level known issues in one concise paragraph. Always write the summary in Spanish, while preserving source titles in their original language. Set found=false when reliable sources do not establish any known issue, and include only sources actually used.`;
+Treat forums, Reddit, and owner-submitted complaints as anecdotal signals and corroborate recurring claims with stronger sources whenever possible. Return brief issue descriptions in Spanish and preserve source titles in their original language. Put each issue in exactly one category: mechanical for powertrain, brakes, steering, suspension, cooling, and operational electrical systems; bodywork for exterior panels, paint, corrosion, seals, and exterior elements; interior for seats, trim, controls, HVAC, and infotainment; other for software, general safety campaigns, or anything that fits none of the prior categories. Always return all four arrays, using empty arrays when no reliable issue was found. Do not infer that a particular advertised vehicle is affected and include only sources actually used.`;
 
 const OPERABILITY_JSON_SCHEMA = {
   type: 'object',
@@ -114,8 +115,10 @@ const KNOWN_ISSUES_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    found: { type: 'boolean' },
-    summary: { type: 'string', description: 'Resumen de un párrafo escrito en español.' },
+    mechanical: { type: 'array', items: { type: 'string' } },
+    bodywork: { type: 'array', items: { type: 'string' } },
+    interior: { type: 'array', items: { type: 'string' } },
+    other: { type: 'array', items: { type: 'string' } },
     sources: {
       type: 'array',
       items: {
@@ -126,7 +129,7 @@ const KNOWN_ISSUES_JSON_SCHEMA = {
       },
     },
   },
-  required: ['found', 'summary', 'sources'],
+  required: ['mechanical', 'bodywork', 'interior', 'other', 'sources'],
 } as const;
 
 function knownIssuesPrompt(query: VehicleQuery): string {

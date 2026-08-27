@@ -35,8 +35,10 @@ export interface KnownIssuesWebSource {
 }
 
 export interface KnownIssuesWebAnalysis {
-  found: boolean;
-  summary: string;
+  mechanical: string[];
+  bodywork: string[];
+  interior: string[];
+  other: string[];
   sources: KnownIssuesWebSource[];
 }
 

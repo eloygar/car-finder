@@ -6,6 +6,10 @@ import type {
   ReconciliationAction,
   ReconciliationRepository,
 } from './types.js';
+import {
+  resolveVehicleModelIdentity,
+  vehicleModelIdentityUpdate,
+} from '../../../shared/src/vehicleTaxonomy.js';
 
 export class PrismaListingRepository implements ReconciliationRepository {
   constructor(private readonly prisma: DatabaseClient) {}
@@ -32,7 +36,27 @@ export class PrismaListingRepository implements ReconciliationRepository {
     await this.prisma.$transaction(
       async (transaction) => {
         for (const action of actions) {
-          const data = toBaseData(action.listing);
+          const identity = resolveVehicleModelIdentity(action.listing.brand, action.listing.model);
+          const vehicleModel = await transaction.vehicleModel.upsert({
+            where: {
+              source_normalizedBrand_normalizedModel: {
+                source: identity.source,
+                normalizedBrand: identity.normalizedBrand,
+                normalizedModel: identity.normalizedModel,
+              },
+            },
+            create: identity,
+            update: vehicleModelIdentityUpdate(identity),
+          });
+          const knownModelIssues = action.listing.year === null ? null : await transaction.knownModelIssues.findUnique({
+            where: { vehicleModelId_year: { vehicleModelId: vehicleModel.id, year: action.listing.year } },
+            select: { id: true },
+          });
+          const data = {
+            ...toBaseData(action.listing),
+            vehicleModelId: vehicleModel.id,
+            knownModelIssuesId: knownModelIssues?.id ?? null,
+          };
           if (action.kind === 'create') {
             await transaction.listing.create({
               data: {

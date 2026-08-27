@@ -1,13 +1,10 @@
 import {
-  parseListingClassification,
-  type ListingClassification,
-} from '../../../shared/src/classification/ListingClassification.js';
-import {
   knownIssuesWebToolOutputSchema,
   operationalStatusToolOutputSchema,
 } from '../../../mcp-server/src/tools/schemas.js';
 import type {
   ClassificationCandidate,
+  KnownIssuesResearchResult,
   ListingClassificationResult,
   ListingClassifier,
 } from './types.js';
@@ -39,10 +36,7 @@ export class SequentialMcpClassifier implements ListingClassifier {
     return new SequentialMcpClassifier(options.mcp, options.logger);
   }
 
-  async classify(candidate: ClassificationCandidate): Promise<ListingClassificationResult> {
-    let inputTokens = 0;
-    let outputTokens = 0;
-
+  async classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult> {
     try {
       this.logInvocation(candidate.externalId, OPERATIONAL_STATUS_TOOL);
       const operationalResult = operationalStatusToolOutputSchema.parse(
@@ -50,51 +44,43 @@ export class SequentialMcpClassifier implements ListingClassifier {
           description: candidate.description ?? '',
         }),
       );
-      inputTokens += operationalResult.usage.inputTokens;
-      outputTokens += operationalResult.usage.outputTokens;
-
-      if (operationalResult.operability.status === 'non_operational') {
-        return {
-          classification: parseListingClassification({
-            operability: operationalResult.operability,
-            knownIssuesWeb: {
-              status: 'skipped',
-              reason: operationalResult.operability.status,
-            },
-          }),
-          inputTokens,
-          outputTokens,
-        };
-      }
-
-      this.logInvocation(candidate.externalId, KNOWN_ISSUES_WEB_TOOL);
-      const knownIssuesResult = knownIssuesWebToolOutputSchema.parse(
-        await this.mcp.callTool(KNOWN_ISSUES_WEB_TOOL, {
-          brand: candidate.brand,
-          model: candidate.model,
-          ...(candidate.year === null ? {} : { year: candidate.year }),
-        }),
-      );
-      inputTokens += knownIssuesResult.usage.inputTokens;
-      outputTokens += knownIssuesResult.usage.outputTokens;
       return {
-        classification: parseListingClassification({
-          operability: operationalResult.operability,
-          knownIssuesWeb: {
-            status: 'completed',
-            ...knownIssuesResult.knownIssues,
-          },
-        }),
-        inputTokens,
-        outputTokens,
+        operability: operationalResult.operability,
+        inputTokens: operationalResult.usage.inputTokens,
+        outputTokens: operationalResult.usage.outputTokens,
       };
     } catch (error) {
       throw new ClassificationAttemptError(
         'Listing classification attempt failed',
-        inputTokens,
-        outputTokens,
+        0,
+        0,
         classificationFailureCode(error),
         { cause: error },
+      );
+    }
+  }
+
+  async researchKnownIssues(candidate: ClassificationCandidate): Promise<KnownIssuesResearchResult> {
+    if (candidate.year === null) throw new Error('A model year is required for known-issues research');
+    try {
+      this.logInvocation(candidate.externalId, KNOWN_ISSUES_WEB_TOOL);
+      const result = knownIssuesWebToolOutputSchema.parse(
+        await this.mcp.callTool(KNOWN_ISSUES_WEB_TOOL, {
+          brand: candidate.brand,
+          model: candidate.model,
+          year: candidate.year,
+        }),
+      );
+      return {
+        analysis: result.knownIssues,
+        anthropicModel: result.model,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      };
+    } catch (error) {
+      throw new ClassificationAttemptError(
+        'Known model issues research failed', 0, 0,
+        classificationFailureCode(error), { cause: error },
       );
     }
   }
@@ -116,5 +102,3 @@ function classificationFailureCode(error: unknown): string {
   }
   return error instanceof Error ? error.name : 'unknown_error';
 }
-
-export type { ListingClassification };

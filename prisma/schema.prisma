@@ -38,9 +38,13 @@ model Listing {
   lastSeenAt  DateTime @default(now())
   rawPayload  Json?
 
-  classification        Json?     @db.JsonB
+  classification        Json?             @db.JsonB
   classificationVersion String?
   classifiedAt          DateTime?
+  vehicleModelId        String?
+  knownModelIssuesId    String?
+  vehicleModel          VehicleModel?     @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
+  knownModelIssues      KnownModelIssues? @relation(fields: [knownModelIssuesId], references: [id], onDelete: SetNull)
 
   @@unique([provider, externalId])
   @@index([brand, model])
@@ -48,6 +52,52 @@ model Listing {
   @@index([province])
   @@index([price])
   @@index([status])
+  @@index([vehicleModelId, year])
+  @@index([knownModelIssuesId])
+}
+
+model VehicleModel {
+  id                    String             @id @default(uuid())
+  source                String             @default("wallapop")
+  brand                 String
+  model                 String
+  normalizedBrand       String
+  normalizedModel       String
+  taxonomyStatus        String
+  taxonomySchemaVersion Int?
+  taxonomyCapturedAt    DateTime?
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  listings              Listing[]
+  knownIssues           KnownModelIssues[]
+
+  @@unique([source, normalizedBrand, normalizedModel])
+  @@index([brand, model])
+  @@map("vehicle_models")
+}
+
+model KnownModelIssues {
+  id              String       @id @default(uuid())
+  vehicleModelId  String
+  year            Int
+  mechanical      String[]
+  bodywork        String[]
+  interior        String[]
+  other           String[]
+  sources         Json         @db.JsonB
+  hasIssues       Boolean
+  analysisVersion String
+  anthropicModel  String
+  researchedAt    DateTime
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  vehicleModel    VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+  listings        Listing[]
+
+  @@unique([vehicleModelId, year])
+  @@index([hasIssues])
+  @@map("known_model_issues")
 }
 
 model KnownIssue {

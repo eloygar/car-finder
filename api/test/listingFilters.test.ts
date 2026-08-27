@@ -15,12 +15,12 @@ describe('buildListingFacetWhere', () => {
   });
 
   it.each([
-    ['found', { path: ['knownIssuesWeb', 'found'], equals: true }],
-    ['none', { path: ['knownIssuesWeb', 'found'], equals: false }],
-    ['skipped', { path: ['knownIssuesWeb', 'status'], equals: 'skipped' }],
-  ] as const)('maps the %s known-issues filter', (knownIssues, classification) => {
+    ['found', { knownModelIssues: { is: { hasIssues: true } } }],
+    ['none', { knownModelIssues: { is: { hasIssues: false } } }],
+    ['pending', { knownModelIssuesId: null }],
+  ] as const)('maps the %s known-issues filter', (knownIssues, condition) => {
     expect(buildListingFacetWhere({ knownIssues })).toEqual({
-      AND: [{ classification }],
+      AND: [condition],
     });
   });
 
@@ -33,7 +33,7 @@ describe('buildListingFacetWhere', () => {
       status: 'active', brand: 'Toyota', classifiedAt: { not: null },
       AND: [
         { OR: expect.any(Array) },
-        { classification: { path: ['knownIssuesWeb', 'found'], equals: true } },
+        { knownModelIssues: { is: { hasIssues: true } } },
       ],
     });
   });

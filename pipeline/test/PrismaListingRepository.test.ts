@@ -38,15 +38,21 @@ function mockPrisma() {
   const findMany = vi.fn().mockResolvedValue([]);
   const create = vi.fn().mockResolvedValue({});
   const update = vi.fn().mockResolvedValue({});
+  const upsertVehicleModel = vi.fn().mockResolvedValue({ id: 'vehicle-model-1' });
+  const findKnownModelIssues = vi.fn().mockResolvedValue(null);
   const transaction = vi.fn(
     async (callback: (client: unknown) => Promise<void>, _options?: unknown) =>
-      callback({ listing: { create, update } }),
+      callback({
+        listing: { create, update },
+        vehicleModel: { upsert: upsertVehicleModel },
+        knownModelIssues: { findUnique: findKnownModelIssues },
+      }),
   );
   const prisma = {
     listing: { findMany },
     $transaction: transaction,
   } as unknown as DatabaseClient;
-  return { prisma, findMany, create, update, transaction };
+  return { prisma, findMany, create, update, transaction, upsertVehicleModel, findKnownModelIssues };
 }
 
 describe('PrismaListingRepository', () => {

@@ -1,11 +1,15 @@
 import type { ListingClassification } from '../../../shared/src/classification/ListingClassification.js';
 
-export const CLASSIFICATION_VERSION = 'v3-operability-web-issues';
+import type { KnownIssuesWebAnalysis } from '../../../mcp-server/src/tools/types.js';
+
+export const CLASSIFICATION_VERSION = 'v4-operability-model-issues';
+export const KNOWN_MODEL_ISSUES_VERSION = 'v1-categorized';
 
 export interface ClassificationRunOptions {
   all: boolean;
   dryRun: boolean;
   force: boolean;
+  refreshKnownIssues: boolean;
   limit?: number;
   only?: string;
 }
@@ -40,17 +44,29 @@ export interface ClassificationSummary {
 
 export interface ClassificationRepository {
   findCandidates(options: ClassificationRunOptions, version: string): Promise<ClassificationCandidate[]>;
+  findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean>;
   saveClassification(options: {
-    id: string;
-    contentHash: string;
+    candidate: ClassificationCandidate;
     classification: ListingClassification;
     version: string;
     classifiedAt: Date;
+    researchedIssues?: {
+      analysis: KnownIssuesWebAnalysis;
+      anthropicModel: string;
+      analysisVersion: string;
+    };
   }): Promise<boolean>;
 }
 
 export interface ListingClassificationResult {
-  classification: ListingClassification;
+  operability: ListingClassification['operability'];
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface KnownIssuesResearchResult {
+  analysis: KnownIssuesWebAnalysis;
+  anthropicModel: string;
   inputTokens: number;
   outputTokens: number;
 }
@@ -69,7 +85,8 @@ export class ClassificationAttemptError extends Error {
 }
 
 export interface ListingClassifier {
-  classify(candidate: ClassificationCandidate): Promise<ListingClassificationResult>;
+  classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult>;
+  researchKnownIssues(candidate: ClassificationCandidate): Promise<KnownIssuesResearchResult>;
 }
 
 export interface ClassifierSession {

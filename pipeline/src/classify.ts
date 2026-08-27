@@ -19,6 +19,7 @@ export function parseClassificationArgs(args: readonly string[]): Classification
   let all = false;
   let dryRun = false;
   let force = false;
+  let refreshKnownIssues = false;
   let explicitLimit: number | undefined;
   let only: string | undefined;
   const start = args[0] === '--' ? 1 : 0;
@@ -38,6 +39,10 @@ export function parseClassificationArgs(args: readonly string[]): Classification
       force = true;
       continue;
     }
+    if (argument === '--refresh-known-issues') {
+      refreshKnownIssues = true;
+      continue;
+    }
     if (argument !== '--limit' && argument !== '--only') {
       throw new Error(`Unknown argument: ${argument}`);
     }
@@ -55,6 +60,7 @@ export function parseClassificationArgs(args: readonly string[]): Classification
     all,
     dryRun,
     force,
+    refreshKnownIssues,
     ...(!all && !only ? { limit: explicitLimit ?? 10 } : {}),
     ...(only ? { only } : {}),
   };
@@ -114,6 +120,7 @@ function usage(): string {
     '  --only <externalId> Process one listing by external ID',
     '  --dry-run           Select and summarize without MCP or Anthropic calls',
     '  --force             Include listings already classified with the current version',
+    '  --refresh-known-issues  Ignore cached model-year web research',
     '  --help              Show this help',
   ].join('\n');
 }

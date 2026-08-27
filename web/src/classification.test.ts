@@ -1,46 +1,34 @@
 import { describe, expect, it } from 'vitest';
-
-import {
-  asListingClassification,
-  asOperabilityClassification,
-  matchesKnownIssuesFilter,
-} from './classification.js';
+import { asKnownModelIssues, asListingClassification, asOperabilityClassification, matchesKnownIssuesFilter } from './classification.js';
 
 const operability = {
-  status: 'operational' as const,
-  confidence: 'high' as const,
-  evidence: ['Se usa a diario'],
-  reason: 'El vendedor indica que se utiliza a diario.',
+  status: 'operational' as const, confidence: 'high' as const,
+  evidence: ['Se usa a diario'], reason: 'El vendedor indica que se utiliza a diario.',
+};
+const issues = {
+  id: 'issues-1', year: 2020, mechanical: ['Fallo de bomba.'], bodywork: [], interior: [], other: [],
+  sources: [{ title: 'Fuente', url: 'https://example.test/source' }], hasIssues: true,
+  researchedAt: '2026-08-27T10:00:00Z',
 };
 
 describe('classification UI model', () => {
-  it('supports current and legacy operability shapes', () => {
+  it('supports v4 and legacy operability shapes', () => {
     expect(asOperabilityClassification(operability)).toEqual(operability);
-    expect(asOperabilityClassification({
-      operability,
-      knownIssuesWeb: { status: 'skipped', reason: 'non_operational' },
-    })).toEqual(operability);
+    expect(asOperabilityClassification({ operability })).toEqual(operability);
+    expect(asListingClassification({ operability })).toEqual({ operability });
   });
 
-  it.each([
-    ['found', { status: 'completed', found: true, summary: 'Hay incidencias.', sources: [] }],
-    ['none', { status: 'completed', found: false, summary: 'No se encontraron incidencias.', sources: [] }],
-    ['skipped', { status: 'skipped', reason: 'non_operational' }],
-  ] as const)('matches the %s known-issues state', (filter, knownIssuesWeb) => {
-    const value = { operability, knownIssuesWeb };
-    expect(asListingClassification(value)).not.toBeNull();
-    expect(matchesKnownIssuesFilter(value, filter)).toBe(true);
+  it('matches relational known-issues states', () => {
+    expect(matchesKnownIssuesFilter(issues, 'found')).toBe(true);
+    expect(matchesKnownIssuesFilter({ ...issues, hasIssues: false, mechanical: [] }, 'none')).toBe(true);
+    expect(matchesKnownIssuesFilter(null, 'pending')).toBe(true);
   });
 
-  it('rejects incomplete current classifications and excludes legacy data from issue filters', () => {
-    expect(asListingClassification({ operability })).toBeNull();
-    expect(asListingClassification({
-      operability,
-      knownIssuesWeb: {
-        status: 'completed', found: true, summary: 'Hay incidencias.',
-        sources: [{ title: 'Fuente insegura', url: 'javascript:alert(1)' }],
-      },
+  it('rejects unsafe sources and malformed relational data', () => {
+    expect(asKnownModelIssues(issues)).toEqual(issues);
+    expect(asKnownModelIssues({
+      ...issues, sources: [{ title: 'Fuente insegura', url: 'javascript:alert(1)' }],
     })).toBeNull();
-    expect(matchesKnownIssuesFilter(operability, 'found')).toBe(false);
+    expect(matchesKnownIssuesFilter(null, 'found')).toBe(false);
   });
 });

@@ -11,13 +11,14 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import type {
-  ListingClassification,
+  KnownModelIssues,
   ListingsResponse,
   ListingRecord,
   VehicleOperabilityClassification,
 } from './types.js';
 import {
   asListingClassification,
+  asKnownModelIssues,
   asOperabilityClassification,
   matchesKnownIssuesFilter,
   type KnownIssuesFilter,
@@ -140,7 +141,7 @@ export function ListingsPage() {
         const c = asOperabilityClassification(item.classification);
         if (!c || c.status !== operability) return false;
       }
-      if (!matchesKnownIssuesFilter(item.classification, knownIssues)) return false;
+      if (!matchesKnownIssuesFilter(asKnownModelIssues(item.knownModelIssues), knownIssues)) return false;
       if (term) {
         const haystack = `${item.title} ${item.brand} ${item.model}`.toLowerCase();
         if (!haystack.includes(term)) return false;
@@ -403,7 +404,7 @@ function ListingsGrid({
           <option value="">Todas las incidencias</option>
           <option value="found">Con problemas conocidos</option>
           <option value="none">Sin problemas conocidos</option>
-          <option value="skipped">Búsqueda omitida</option>
+          <option value="pending">Sin investigar</option>
         </select>
       </div>
 
@@ -591,8 +592,10 @@ function ListingDetails({ item }: { item: ListingRecord }) {
 
 export function ClassificationSummary({ item }: { item: ListingRecord }) {
   const classification = asOperabilityClassification(item.classification);
-  const currentClassification = asListingClassification(item.classification);
-  const knownIssues = currentClassification?.knownIssuesWeb;
+  const currentClassification = item.classificationVersion === 'v4-operability-model-issues'
+    ? asListingClassification(item.classification)
+    : null;
+  const knownIssues = asKnownModelIssues(item.knownModelIssues);
 
   if (classification) {
     return (
@@ -611,14 +614,14 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
         <p className="classification-reason" title={classification.reason}>
           {classification.reason}
         </p>
-        {knownIssues ? (
-          <div className="known-issues-summary">
-            <KnownIssuesBadge knownIssues={knownIssues} />
-            {knownIssues.status === 'completed' ? (
-              <p className="known-issues-preview" title={knownIssues.summary}>{knownIssues.summary}</p>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="known-issues-summary">
+          <KnownIssuesBadge knownIssues={knownIssues} />
+          {knownIssues?.hasIssues ? (
+            <p className="known-issues-preview" title={firstKnownIssue(knownIssues)}>
+              {firstKnownIssue(knownIssues)}
+            </p>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -637,7 +640,7 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
 
 export function ClassificationDetails({ item }: { item: ListingRecord }) {
   const classification = asOperabilityClassification(item.classification);
-  const knownIssues = asListingClassification(item.classification)?.knownIssuesWeb;
+  const knownIssues = asKnownModelIssues(item.knownModelIssues);
 
   if (classification) {
     return (
@@ -664,15 +667,25 @@ export function ClassificationDetails({ item }: { item: ListingRecord }) {
             </ul>
           </div>
         ) : null}
-        {knownIssues?.status === 'completed' ? (
+        {knownIssues ? (
           <div className="known-issues-details">
             <div className="known-issues-details-head">
               <p className="evidence-title">Problemas conocidos del modelo</p>
               <KnownIssuesBadge knownIssues={knownIssues} />
             </div>
-            <p className="classification-reason-full">{knownIssues.summary}</p>
+            {knownIssueCategories(knownIssues).map(({ label, issues }) => (
+              <div className="evidence" key={label}>
+                <p className="evidence-title">{label}</p>
+                <ul className="evidence-list">
+                  {issues.map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              </div>
+            ))}
+            {!knownIssues.hasIssues ? (
+              <p className="classification-reason-full">No se encontraron problemas conocidos.</p>
+            ) : null}
             <p className="known-issues-disclaimer">
-              Son incidencias documentadas para el modelo; no implican que esta unidad concreta esté afectada.
+              Son incidencias documentadas para este modelo-año; no implican que esta unidad concreta esté afectada.
             </p>
             {knownIssues.sources.length > 0 ? (
               <ul className="evidence-list known-issues-sources">
@@ -682,12 +695,12 @@ export function ClassificationDetails({ item }: { item: ListingRecord }) {
               </ul>
             ) : null}
           </div>
-        ) : knownIssues?.status === 'skipped' ? (
+        ) : (
           <div className="known-issues-details">
             <KnownIssuesBadge knownIssues={knownIssues} />
-            <p className="classification-reason-full">Búsqueda web omitida porque el vehículo se clasificó como no operativo.</p>
+            <p className="classification-reason-full">Este modelo-año todavía no se ha investigado.</p>
           </div>
-        ) : null}
+        )}
       </section>
     );
   }
@@ -714,16 +727,29 @@ export function ClassificationDetails({ item }: { item: ListingRecord }) {
 function KnownIssuesBadge({
   knownIssues,
 }: {
-  knownIssues: ListingClassification['knownIssuesWeb'];
+  knownIssues: KnownModelIssues | null;
 }) {
-  if (knownIssues.status === 'skipped') {
-    return <span className="known-issues-pill known-issues-skipped">Búsqueda omitida</span>;
+  if (!knownIssues) {
+    return <span className="known-issues-pill known-issues-skipped">Sin investigar</span>;
   }
   return (
-    <span className={`known-issues-pill known-issues-${knownIssues.found ? 'found' : 'none'}`}>
-      {knownIssues.found ? 'Problemas conocidos' : 'Sin problemas conocidos'}
+    <span className={`known-issues-pill known-issues-${knownIssues.hasIssues ? 'found' : 'none'}`}>
+      {knownIssues.hasIssues ? 'Problemas conocidos' : 'Sin problemas conocidos'}
     </span>
   );
+}
+
+function knownIssueCategories(knownIssues: KnownModelIssues) {
+  return [
+    { label: 'Mecánica', issues: knownIssues.mechanical },
+    { label: 'Carrocería', issues: knownIssues.bodywork },
+    { label: 'Interior', issues: knownIssues.interior },
+    { label: 'Otros', issues: knownIssues.other },
+  ].filter(({ issues }) => issues.length > 0);
+}
+
+function firstKnownIssue(knownIssues: KnownModelIssues): string {
+  return knownIssueCategories(knownIssues)[0]?.issues[0] ?? '';
 }
 
 function operabilityLabel(status: VehicleOperabilityClassification['status']): string {

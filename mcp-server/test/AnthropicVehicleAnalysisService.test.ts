@@ -26,10 +26,10 @@ describe('AnthropicVehicleAnalysisService', () => {
     });
   });
 
-  it('uses Haiku 4.5 with native web_search and returns a one-paragraph summary', async () => {
+  it('uses Haiku 4.5 with native web_search and returns categorized issues', async () => {
     const create = vi.fn().mockResolvedValue(message({
-      found: true,
-      summary: 'El modelo tiene una llamada a revisión documentada que afecta a uno de sus módulos de control.',
+      mechanical: ['Fallo documentado del módulo de control.'],
+      bodywork: [], interior: [], other: [],
       sources: [{ title: 'Official recall', url: 'https://example.test/recall' }],
     }, { web_search_requests: 1 }));
     const service = new AnthropicVehicleAnalysisService({ create });
@@ -48,10 +48,11 @@ describe('AnthropicVehicleAnalysisService', () => {
     expect(system).toContain('https://www.tuev-nord.de/');
     expect(system).toContain('https://www.carcomplaints.com/');
     expect(system).toContain('https://www.reddit.com/r/AskMechanics/');
+    expect(system).toContain('https://www.expertoautorecambios.es/magazine/');
     expect(system).toContain('not ranked');
-    expect(system).toContain('Always write the summary in Spanish');
+    expect(system).toContain('Spanish');
     expect(result).toMatchObject({
-      knownIssues: { found: true },
+      knownIssues: { mechanical: ['Fallo documentado del módulo de control.'] },
       usage: { inputTokens: 11, outputTokens: 3, webSearchRequests: 1 },
     });
   });

@@ -7,6 +7,9 @@ import type {
 } from './types.js';
 import { CLASSIFICATION_VERSION } from './types.js';
 import { ClassificationAttemptError } from './types.js';
+import { parseListingClassification } from '../../../shared/src/classification/ListingClassification.js';
+import { KNOWN_MODEL_ISSUES_VERSION } from './types.js';
+import { normalizeTaxonomyLabel } from '../../../shared/src/vehicleTaxonomy.js';
 
 export async function runClassification(options: {
   run: ClassificationRunOptions;
@@ -30,20 +33,42 @@ export async function runClassification(options: {
   if (!options.createSession) throw new Error('Classifier session is required for a live run');
 
   const session = await options.createSession();
+  const refreshedModelYears = new Set<string>();
   try {
     for (const candidate of candidates) {
       try {
-        const result = await session.classifier.classify(candidate);
+        const result = await session.classifier.classifyOperability(candidate);
         summary.inputTokens += result.inputTokens;
         summary.outputTokens += result.outputTokens;
+        let researchedIssues;
+        if (result.operability.status !== 'non_operational' && candidate.year !== null) {
+          const cacheKey = modelYearKey(candidate.brand, candidate.model, candidate.year);
+          const alreadyRefreshed = refreshedModelYears.has(cacheKey);
+          const cached = alreadyRefreshed || await options.repository.findKnownModelIssues(candidate);
+          if (!cached || (options.run.refreshKnownIssues && !alreadyRefreshed)) {
+            const research = await session.classifier.researchKnownIssues(candidate);
+            summary.inputTokens += research.inputTokens;
+            summary.outputTokens += research.outputTokens;
+            researchedIssues = {
+              analysis: research.analysis,
+              anthropicModel: research.anthropicModel,
+              analysisVersion: KNOWN_MODEL_ISSUES_VERSION,
+            };
+          }
+        }
         const saved = await options.repository.saveClassification({
-          id: candidate.id,
-          contentHash: candidate.contentHash,
-          classification: result.classification,
+          candidate,
+          classification: parseListingClassification({ operability: result.operability }),
           version: CLASSIFICATION_VERSION,
           classifiedAt: options.now?.() ?? new Date(),
+          ...(researchedIssues ? { researchedIssues } : {}),
         });
-        if (saved) summary.classified += 1;
+        if (saved) {
+          summary.classified += 1;
+          if (researchedIssues && candidate.year !== null) {
+            refreshedModelYears.add(modelYearKey(candidate.brand, candidate.model, candidate.year));
+          }
+        }
         else summary.stale += 1;
       } catch (error) {
         if (error instanceof ClassificationAttemptError) {
@@ -67,4 +92,8 @@ export async function runClassification(options: {
     await session.close();
   }
   return summary;
+}
+
+function modelYearKey(brand: string, model: string, year: number): string {
+  return `${normalizeTaxonomyLabel(brand)}\u0000${normalizeTaxonomyLabel(model)}\u0000${year}`;
 }

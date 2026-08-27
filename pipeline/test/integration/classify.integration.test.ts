@@ -15,6 +15,9 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
   beforeAll(async () => {
     prisma = createPrismaClient();
     await prisma.listing.deleteMany({ where: { externalId: { in: externalIds } } });
+    await prisma.vehicleModel.deleteMany({
+      where: { normalizedBrand: { in: ['integrationbrand', 'atomicintegrationbrand'] } },
+    });
     await prisma.knownIssue.deleteMany({ where: { id: issueId } });
     await prisma.knownIssue.create({
       data: {
@@ -48,6 +51,9 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
 
   afterAll(async () => {
     await prisma.listing.deleteMany({ where: { externalId: { in: externalIds } } });
+    await prisma.vehicleModel.deleteMany({
+      where: { normalizedBrand: { in: ['integrationbrand', 'atomicintegrationbrand'] } },
+    });
     await prisma.knownIssue.deleteMany({ where: { id: issueId } });
     await prisma.$disconnect();
   });
@@ -59,15 +65,14 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         operability: {
           status: 'operational', confidence: 'high',
           evidence: ['Funciona perfectamente', 'se usa a diario'],
-          reason: 'The description explicitly says it works and is used daily.',
+          reason: 'La descripción indica que funciona y se usa a diario.',
         },
         model: 'claude-sonnet-5',
         usage: { inputTokens: 10, outputTokens: 5, webSearchRequests: 0 },
       })
       .mockResolvedValueOnce({
         knownIssues: {
-          found: true,
-          summary: 'A documented model-level issue exists.',
+          mechanical: ['Fallo conocido de integración.'], bodywork: [], interior: [], other: [],
           sources: [{ title: 'Source', url: 'https://example.com/integration-issue' }],
         },
         model: 'claude-haiku-4-5-20251001',
@@ -75,7 +80,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       });
 
     const summary = await runClassification({
-      run: { all: false, dryRun: false, force: false, only: externalIds[0] },
+      run: { all: false, dryRun: false, force: false, refreshKnownIssues: false, only: externalIds[0] },
       repository,
       logger,
       createSession: async () => {
@@ -98,20 +103,50 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     const stored = await prisma.listing.findUniqueOrThrow({
       where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
     });
-    expect(stored).toMatchObject({ classificationVersion: 'v3-operability-web-issues' });
+    expect(stored).toMatchObject({ classificationVersion: 'v4-operability-model-issues' });
     expect(stored.classification).toMatchObject({
       operability: {
         status: 'operational', confidence: 'high',
         evidence: ['Funciona perfectamente', 'se usa a diario'],
       },
-      knownIssuesWeb: { status: 'completed', found: true },
     });
+    const relationalIssues = await prisma.knownModelIssues.findUniqueOrThrow({
+      where: { id: stored.knownModelIssuesId! },
+    });
+    expect(relationalIssues).toMatchObject({ mechanical: ['Fallo conocido de integración.'], hasIssues: true });
 
     const second = await runClassification({
-      run: { all: false, dryRun: true, force: false, only: externalIds[0] },
+      run: { all: false, dryRun: true, force: false, refreshKnownIssues: false, only: externalIds[0] },
       repository,
       logger,
     });
     expect(second.selected).toBe(0);
+  });
+
+  it('rolls back provisional identity and research when content becomes stale', async () => {
+    const row = await prisma.listing.findUniqueOrThrow({
+      where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[2]! } },
+    });
+    const repository = new PrismaClassificationRepository(prisma);
+    const saved = await repository.saveClassification({
+      candidate: {
+        id: row.id, externalId: row.externalId, contentHash: 'stale-hash', title: row.title,
+        description: row.description, price: row.price.toFixed(2), brand: 'AtomicIntegrationBrand',
+        model: 'AtomicIntegrationModel', year: 2022, mileage: null, fuelType: null,
+        transmission: null, bodyType: null, images: [],
+      },
+      classification: {
+        operability: { status: 'operational', confidence: 'high', evidence: ['Funciona'], reason: 'Funciona.' },
+      },
+      version: 'v4-operability-model-issues', classifiedAt: new Date(),
+      researchedIssues: {
+        analysis: { mechanical: ['Fallo atómico.'], bodywork: [], interior: [], other: [], sources: [] },
+        anthropicModel: 'test', analysisVersion: 'v1-categorized',
+      },
+    });
+    expect(saved).toBe(false);
+    expect(await prisma.vehicleModel.findFirst({
+      where: { normalizedBrand: 'atomicintegrationbrand' },
+    })).toBeNull();
   });
 });

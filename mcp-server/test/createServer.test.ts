@@ -139,7 +139,7 @@ function analysisService(): VehicleAnalysisService {
       usage: { inputTokens: 10, outputTokens: 2, webSearchRequests: 0 },
     }),
     checkKnownIssuesWeb: vi.fn().mockResolvedValue({
-      knownIssues: { found: false, summary: 'No documented issues found.', sources: [] },
+      knownIssues: { mechanical: [], bodywork: [], interior: [], other: [], sources: [] },
       model: 'claude-haiku-4-5-20251001',
       usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
     }),

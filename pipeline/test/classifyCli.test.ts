@@ -8,6 +8,7 @@ describe('classification CLI', () => {
       all: false,
       dryRun: false,
       force: false,
+      refreshKnownIssues: false,
       limit: 10,
     });
   });
@@ -17,8 +18,10 @@ describe('classification CLI', () => {
       all: true,
       dryRun: true,
       force: true,
+      refreshKnownIssues: false,
     });
     expect(parseClassificationArgs(['--only', 'external-1'])).toMatchObject({ only: 'external-1' });
+    expect(parseClassificationArgs(['--refresh-known-issues'])).toMatchObject({ refreshKnownIssues: true });
   });
 
   it.each([

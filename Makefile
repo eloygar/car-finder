@@ -11,7 +11,7 @@ CLASSIFY_ID ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help install setup check test test-integration typecheck \
-	db-up db-down db-migrate db-seed search search-one \
+	db-up db-down db-migrate db-seed db-sync-taxonomy search search-one \
 	reconcile reconcile-dry mcp-server mcp-smoke app app-build app-start \
 	classify classify-all classify-one classify-dry
 
@@ -36,11 +36,12 @@ help:
 	@echo "  make db-up|db-down     Start or stop local PostgreSQL"
 	@echo "  make db-migrate        Apply committed Prisma migrations"
 	@echo "  make db-seed           Seed the KnownIssue table"
+	@echo "  make db-sync-taxonomy  Sync canonical Wallapop vehicle models"
 
 install:
 	$(PNPM) install
 
-setup: install db-up db-migrate db-seed
+setup: install db-up db-migrate db-sync-taxonomy db-seed
 
 check: test typecheck test-integration
 
@@ -64,6 +65,9 @@ db-migrate:
 
 db-seed:
 	$(PNPM) db:seed-known-issues
+
+db-sync-taxonomy:
+	$(PNPM) db:sync-model-taxonomy
 
 search:
 	$(PNPM) pipeline:search

@@ -8,6 +8,7 @@ import {
   checkKnownIssuesOutputSchema,
   estimateMarketPriceOutputSchema,
   knownIssuesWebToolOutputSchema,
+  knownIssuesWebQuerySchema,
   operationalStatusInputSchema,
   operationalStatusToolOutputSchema,
   vehicleOperabilityOutputSchema,
@@ -54,8 +55,8 @@ export function createMcpServer({
     'check_known_issues_web',
     {
       title: 'Check Known Vehicle Issues on the Web',
-      description: 'Use Claude Haiku 4.5 and its native web search tool to summarize documented model-level problems and recalls.',
-      inputSchema: vehicleQuerySchema,
+      description: 'Use Claude Haiku 4.5 and native web search to categorize documented problems for one vehicle model-year.',
+      inputSchema: knownIssuesWebQuerySchema,
       outputSchema: knownIssuesWebToolOutputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },

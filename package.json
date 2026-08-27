@@ -20,6 +20,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed-known-issues": "tsx prisma/seedKnownIssues.ts",
+    "db:sync-model-taxonomy": "tsx prisma/syncVehicleModels.ts",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json"

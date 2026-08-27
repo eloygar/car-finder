@@ -7,28 +7,9 @@ export const operabilityClassificationSchema = z.strictObject({
   reason: z.string().trim().min(1),
 });
 
-const knownIssuesCompletedSchema = z.strictObject({
-  status: z.literal('completed'),
-  found: z.boolean(),
-  summary: z.string().trim().min(1),
-  sources: z.array(z.strictObject({
-    title: z.string().trim().min(1),
-    url: z.string().trim().min(1),
-  })),
-});
-
-const knownIssuesSkippedSchema = z.strictObject({
-  status: z.literal('skipped'),
-  reason: z.literal('non_operational'),
-});
-
-/** Versioned v3 result produced by the deterministic two-stage MCP pipeline. */
+/** Versioned v4 listing-owned result. Model-level research is stored relationally. */
 export const listingClassificationSchema = z.strictObject({
   operability: operabilityClassificationSchema,
-  knownIssuesWeb: z.discriminatedUnion('status', [
-    knownIssuesCompletedSchema,
-    knownIssuesSkippedSchema,
-  ]),
 });
 
 export type ListingClassification = z.infer<typeof listingClassificationSchema>;

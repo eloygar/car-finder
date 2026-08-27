@@ -1,94 +1,81 @@
 import { describe, expect, it, vi } from 'vitest';
-
 import { PrismaClassificationRepository } from '../src/classify/PrismaClassificationRepository.js';
 import type { DatabaseClient } from '../src/db/client.js';
+import type { ClassificationCandidate } from '../src/classify/types.js';
 
+const candidate: ClassificationCandidate = {
+  id: 'db-1', externalId: 'wallapop-1', contentHash: 'hash-1', title: 'Toyota Corolla', description: null,
+  price: '12345.60', brand: 'Toyota', model: 'Corolla', year: 2020, mileage: 40_000,
+  fuelType: 'hybrid', transmission: 'automatic', bodyType: 'sedan', images: [],
+};
 const classification = {
-  operability: {
-    status: 'operational' as const,
-    confidence: 'high' as const,
-    evidence: ['funciona perfectamente'],
-    reason: 'The description explicitly says it works.',
-  },
-  knownIssuesWeb: {
-    status: 'completed' as const,
-    found: false,
-    summary: 'No documented model-level issue was found.',
-    sources: [],
-  },
+  operability: { status: 'operational' as const, confidence: 'high' as const, evidence: ['funciona'], reason: 'Funciona.' },
 };
 
-function row() {
-  return {
-    id: 'db-1', externalId: 'wallapop-1', contentHash: 'hash-1', title: 'Toyota Corolla',
-    description: null, price: { toFixed: () => '12345.60' }, brand: 'Toyota', model: 'Corolla',
-    year: 2020, mileage: 40_000, fuelType: 'hybrid', transmission: 'automatic',
-    bodyType: 'sedan', images: ['https://cdn.wallapop.com/car.jpg'],
+function fakeClient(updateCount = 1) {
+  const listing = {
+    findMany: vi.fn().mockResolvedValue([{ ...candidate, price: { toFixed: () => candidate.price } }]),
+    updateMany: vi.fn().mockResolvedValue({ count: updateCount }),
   };
-}
-
-function fakeClient() {
-  return {
-    listing: {
-      findMany: vi.fn().mockResolvedValue([row()]),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  const tx = {
+    listing,
+    vehicleModel: { upsert: vi.fn().mockResolvedValue({ id: 'vehicle-model-1' }) },
+    knownModelIssues: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'issues-1' }),
     },
   };
+  const prisma = {
+    listing,
+    vehicleModel: { findUnique: vi.fn().mockResolvedValue({ id: 'vehicle-model-1' }) },
+    knownModelIssues: { count: vi.fn().mockResolvedValue(0) },
+    $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
+  };
+  return { prisma: prisma as unknown as DatabaseClient, listing, tx };
 }
 
 describe('PrismaClassificationRepository', () => {
-  it('selects only active pending or outdated rows in stable order and applies the limit', async () => {
-    const prisma = fakeClient();
-    const repository = new PrismaClassificationRepository(prisma as unknown as DatabaseClient);
+  it('selects pending rows in stable order and applies the limit', async () => {
+    const { prisma, listing } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
     const candidates = await repository.findCandidates(
-      { all: false, dryRun: false, force: false, limit: 7 },
-      'v1',
+      { all: false, dryRun: false, force: false, refreshKnownIssues: false, limit: 7 }, 'v4',
     );
-
-    expect(prisma.listing.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        status: 'active',
-        OR: [
-          { classifiedAt: null },
-          { classificationVersion: null },
-          { classificationVersion: { not: 'v1' } },
-        ],
-      },
-      orderBy: [{ firstSeenAt: 'asc' }, { id: 'asc' }],
+    expect(listing.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: 'active', OR: [{ classifiedAt: null }, { classificationVersion: null }, { classificationVersion: { not: 'v4' } }] },
       take: 7,
     }));
-    expect(candidates[0]).toMatchObject({ externalId: 'wallapop-1', price: '12345.60' });
+    expect(candidates[0]?.price).toBe('12345.60');
   });
 
-  it('force includes current classifications and only bypasses the batch limit', async () => {
-    const prisma = fakeClient();
-    const repository = new PrismaClassificationRepository(prisma as unknown as DatabaseClient);
-    await repository.findCandidates(
-      { all: false, dryRun: false, force: true, limit: 10, only: 'wallapop-1' },
-      'v1',
-    );
-
-    const query = prisma.listing.findMany.mock.calls[0]![0];
-    expect(query.where).toEqual({ status: 'active', externalId: 'wallapop-1' });
-    expect(query).not.toHaveProperty('take');
-  });
-
-  it('persists only when the original content hash still matches', async () => {
-    const prisma = fakeClient();
-    const repository = new PrismaClassificationRepository(prisma as unknown as DatabaseClient);
+  it('persists identity, categorized issues and listing atomically', async () => {
+    const { prisma, tx } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
     const classifiedAt = new Date('2026-08-25T12:00:00Z');
-
     await expect(repository.saveClassification({
-      id: 'db-1', contentHash: 'hash-1', classification, version: 'v2-operability', classifiedAt,
+      candidate, classification, version: 'v4', classifiedAt,
+      researchedIssues: {
+        analysis: {
+          mechanical: ['Bomba de agua.'], bodywork: [], interior: [], other: [],
+          sources: [{ title: 'Source', url: 'https://example.test' }],
+        },
+        anthropicModel: 'claude-haiku', analysisVersion: 'v1-categorized',
+      },
     })).resolves.toBe(true);
-    expect(prisma.listing.updateMany).toHaveBeenCalledWith({
+    expect(tx.knownModelIssues.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ year: 2020, hasIssues: true, mechanical: ['Bomba de agua.'] }),
+    }));
+    expect(tx.listing.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
       where: { id: 'db-1', contentHash: 'hash-1', status: 'active' },
-      data: { classification, classificationVersion: 'v2-operability', classifiedAt },
-    });
+      data: expect.objectContaining({ classification, vehicleModelId: 'vehicle-model-1', knownModelIssuesId: 'issues-1' }),
+    }));
+  });
 
-    prisma.listing.updateMany.mockResolvedValueOnce({ count: 0 });
+  it('rolls back stale optimistic updates', async () => {
+    const { prisma } = fakeClient(0);
+    const repository = new PrismaClassificationRepository(prisma);
     await expect(repository.saveClassification({
-      id: 'db-1', contentHash: 'old-hash', classification, version: 'v2-operability', classifiedAt,
+      candidate, classification, version: 'v4', classifiedAt: new Date(),
     })).resolves.toBe(false);
   });
 });

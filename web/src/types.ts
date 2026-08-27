@@ -88,6 +88,7 @@ export interface ListingRecord {
   classification: ListingClassification | VehicleOperabilityClassification | Record<string, unknown> | null;
   classificationVersion: string | null;
   classifiedAt: string | null;
+  knownModelIssues: KnownModelIssues | null;
 }
 
 export interface VehicleOperabilityClassification {
@@ -99,14 +100,18 @@ export interface VehicleOperabilityClassification {
 
 export interface ListingClassification {
   operability: VehicleOperabilityClassification;
-  knownIssuesWeb:
-    | {
-        status: 'completed';
-        found: boolean;
-        summary: string;
-        sources: Array<{ title: string; url: string }>;
-      }
-    | { status: 'skipped'; reason: 'non_operational' };
+}
+
+export interface KnownModelIssues {
+  id: string;
+  year: number;
+  mechanical: string[];
+  bodywork: string[];
+  interior: string[];
+  other: string[];
+  sources: Array<{ title: string; url: string }>;
+  hasIssues: boolean;
+  researchedAt: string;
 }
 
 export interface ListingsResponse {

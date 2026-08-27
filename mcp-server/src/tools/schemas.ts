@@ -6,6 +6,10 @@ export const vehicleQuerySchema = z.strictObject({
   year: z.number().int().min(1886).max(2100).optional().describe('Model year'),
 });
 
+export const knownIssuesWebQuerySchema = vehicleQuerySchema.extend({
+  year: z.number().int().min(1886).max(2100).describe('Required model year'),
+});
+
 export const vehicleOperabilitySubmissionSchema = z.strictObject({
   description: z.string().describe('Untrusted seller description used as the only evidence source'),
   status: z.enum(['operational', 'non_operational', 'unknown']),
@@ -34,13 +38,34 @@ export const operationalStatusToolOutputSchema = z.strictObject({
   usage: anthropicToolUsageSchema,
 });
 
+const briefKnownIssueSchema = z.string().trim().min(1).max(300);
+
 export const knownIssuesWebAnalysisSchema = z.strictObject({
-  found: z.boolean(),
-  summary: z.string().trim().min(1).describe('One-paragraph summary in Spanish'),
+  mechanical: z.array(briefKnownIssueSchema),
+  bodywork: z.array(briefKnownIssueSchema),
+  interior: z.array(briefKnownIssueSchema),
+  other: z.array(briefKnownIssueSchema),
   sources: z.array(z.strictObject({
     title: z.string().trim().min(1),
-    url: z.string().trim().min(1),
+    url: z.string().trim().url().refine((value) => {
+      const protocol = new URL(value).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    }, 'Source URL must use HTTP or HTTPS'),
   })),
+}).superRefine((value, context) => {
+  const seen = new Set<string>();
+  for (const [category, issues] of Object.entries({
+    mechanical: value.mechanical, bodywork: value.bodywork,
+    interior: value.interior, other: value.other,
+  })) {
+    for (const issue of issues) {
+      const key = issue.toLocaleLowerCase('es');
+      if (seen.has(key)) {
+        context.addIssue({ code: 'custom', path: [category], message: 'Each issue must appear in one category only' });
+      }
+      seen.add(key);
+    }
+  }
 });
 
 export const knownIssuesWebToolOutputSchema = z.strictObject({

@@ -58,6 +58,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       const [items, count] = await Promise.all([
         prisma.listing.findMany({
           where,
+          include: { knownModelIssues: true },
           orderBy: { firstSeenAt: 'desc' },
           ...(query.limit ? { take: Number(query.limit) } : {}),
         }),
