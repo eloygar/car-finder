@@ -1,13 +1,15 @@
 import {
-  knownIssuesWebToolOutputSchema,
-  issueSeverityAndCostToolOutputSchema,
-  operationalStatusToolOutputSchema,
-} from '../../../mcp-server/src/tools/schemas.js';
+  parseListingClassification,
+  type ListingClassification,
+} from '../../../shared/src/classification/ListingClassification.js';
+import { operationalStatusToolOutputSchema } from '../../../mcp-server/src/tools/schemas.js';
+import type {
+  KnownIssuesLookup,
+  KnownIssuesWebAnalysis,
+  VehicleQuery,
+} from '../../../mcp-server/src/tools/types.js';
 import type {
   ClassificationCandidate,
-  IssueAssessmentCandidate,
-  IssueAssessmentResult,
-  KnownIssuesResearchResult,
   ListingClassificationResult,
   ListingClassifier,
 } from './types.js';
@@ -15,8 +17,6 @@ import { ClassificationAttemptError } from './types.js';
 import type { BatchLogger } from '../search.js';
 
 const OPERATIONAL_STATUS_TOOL = 'check_operational_status';
-const KNOWN_ISSUES_WEB_TOOL = 'check_known_issues_web';
-const ISSUE_ASSESSMENT_TOOL = 'assess_issue_severity_and_cost';
 
 export interface ClassificationMcpBridge {
   listTools(): Promise<Array<{ name: string }>>;
@@ -26,21 +26,26 @@ export interface ClassificationMcpBridge {
 export class SequentialMcpClassifier implements ListingClassifier {
   private constructor(
     private readonly mcp: ClassificationMcpBridge,
+    private readonly knownIssuesLookup: KnownIssuesLookup,
     private readonly logger?: BatchLogger,
   ) {}
 
   static async create(options: {
     mcp: ClassificationMcpBridge;
+    knownIssuesLookup: KnownIssuesLookup;
     logger?: BatchLogger;
   }): Promise<SequentialMcpClassifier> {
     const advertised = new Set((await options.mcp.listTools()).map(({ name }) => name));
-    for (const tool of [OPERATIONAL_STATUS_TOOL, KNOWN_ISSUES_WEB_TOOL, ISSUE_ASSESSMENT_TOOL]) {
-      if (!advertised.has(tool)) throw new Error(`Missing required MCP tool: ${tool}`);
+    if (!advertised.has(OPERATIONAL_STATUS_TOOL)) {
+      throw new Error(`Missing required MCP tool: ${OPERATIONAL_STATUS_TOOL}`);
     }
-    return new SequentialMcpClassifier(options.mcp, options.logger);
+    return new SequentialMcpClassifier(options.mcp, options.knownIssuesLookup, options.logger);
   }
 
-  async classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult> {
+  async classify(candidate: ClassificationCandidate): Promise<ListingClassificationResult> {
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     try {
       this.logInvocation(candidate.externalId, OPERATIONAL_STATUS_TOOL);
       const operationalResult = operationalStatusToolOutputSchema.parse(
@@ -48,68 +53,49 @@ export class SequentialMcpClassifier implements ListingClassifier {
           description: candidate.description ?? '',
         }),
       );
+      inputTokens += operationalResult.usage.inputTokens;
+      outputTokens += operationalResult.usage.outputTokens;
+
+      if (operationalResult.operability.status === 'non_operational') {
+        return {
+          classification: parseListingClassification({
+            operability: operationalResult.operability,
+            knownIssuesWeb: {
+              status: 'skipped',
+              reason: operationalResult.operability.status,
+            },
+          }),
+          inputTokens,
+          outputTokens,
+        };
+      }
+
+      const query: VehicleQuery = {
+        brand: candidate.brand,
+        model: candidate.model,
+        ...(candidate.year === null ? {} : { year: candidate.year }),
+      };
+      const knownIssues: KnownIssuesWebAnalysis = await this.knownIssuesLookup(query);
+      this.logLookup(candidate.externalId, knownIssues.found);
+
       return {
-        operability: operationalResult.operability,
-        inputTokens: operationalResult.usage.inputTokens,
-        outputTokens: operationalResult.usage.outputTokens,
+        classification: parseListingClassification({
+          operability: operationalResult.operability,
+          knownIssuesWeb: {
+            status: 'completed',
+            ...knownIssues,
+          },
+        }),
+        inputTokens,
+        outputTokens,
       };
     } catch (error) {
       throw new ClassificationAttemptError(
         'Listing classification attempt failed',
-        0,
-        0,
+        inputTokens,
+        outputTokens,
         classificationFailureCode(error),
         { cause: error },
-      );
-    }
-  }
-
-  async researchKnownIssues(candidate: ClassificationCandidate): Promise<KnownIssuesResearchResult> {
-    if (candidate.year === null) throw new Error('A model year is required for known-issues research');
-    try {
-      this.logInvocation(candidate.externalId, KNOWN_ISSUES_WEB_TOOL);
-      const result = knownIssuesWebToolOutputSchema.parse(
-        await this.mcp.callTool(KNOWN_ISSUES_WEB_TOOL, {
-          brand: candidate.brand,
-          model: candidate.model,
-          year: candidate.year,
-        }),
-      );
-      return {
-        analysis: result.knownIssues,
-        anthropicModel: result.model,
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-      };
-    } catch (error) {
-      throw new ClassificationAttemptError(
-        'Known model issues research failed', 0, 0,
-        classificationFailureCode(error), { cause: error },
-      );
-    }
-  }
-
-  async assessIssueSeverityAndCost(candidate: IssueAssessmentCandidate): Promise<IssueAssessmentResult> {
-    try {
-      this.logInvocation(candidate.issueKey, ISSUE_ASSESSMENT_TOOL);
-      const result = issueSeverityAndCostToolOutputSchema.parse(
-        await this.mcp.callTool(ISSUE_ASSESSMENT_TOOL, {
-          issue: candidate.issue,
-          brand: candidate.brand,
-          model: candidate.model,
-        }),
-      );
-      return {
-        assessment: result.assessment,
-        pricingYear: result.pricingYear,
-        anthropicModel: result.model,
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-      };
-    } catch (error) {
-      throw new ClassificationAttemptError(
-        'Known issue severity and cost assessment failed', 0, 0,
-        classificationFailureCode(error), { cause: error },
       );
     }
   }
@@ -118,6 +104,13 @@ export class SequentialMcpClassifier implements ListingClassifier {
     this.logger?.info(
       { externalId, tool },
       'Invoking MCP classification tool',
+    );
+  }
+
+  private logLookup(externalId: string, found: boolean): void {
+    this.logger?.info(
+      { externalId, found },
+      'Resolved known issues from the model catalog',
     );
   }
 }
@@ -131,3 +124,5 @@ function classificationFailureCode(error: unknown): string {
   }
   return error instanceof Error ? error.name : 'unknown_error';
 }
+
+export type { ListingClassification };

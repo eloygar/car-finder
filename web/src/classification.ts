@@ -1,11 +1,10 @@
 import type {
   ListingClassification,
   ListingRecord,
-  KnownModelIssues,
   VehicleOperabilityClassification,
 } from './types.js';
 
-export type KnownIssuesFilter = '' | 'found' | 'none' | 'pending';
+export type KnownIssuesFilter = '' | 'found' | 'none' | 'skipped';
 
 export function asOperabilityClassification(
   value: ListingRecord['classification'],
@@ -26,66 +25,34 @@ export function asOperabilityClassification(
 export function asListingClassification(
   value: ListingRecord['classification'],
 ): ListingClassification | null {
-  if (!isRecord(value) || !isRecord(value.operability)) return null;
+  if (!isRecord(value) || !isRecord(value.operability) || !isRecord(value.knownIssuesWeb)) {
+    return null;
+  }
   if (!asOperabilityClassification(value.operability as ListingRecord['classification'])) return null;
+  const knownIssues = value.knownIssuesWeb;
+  if (knownIssues.status === 'skipped') {
+    if (knownIssues.reason !== 'non_operational') return null;
+  } else if (knownIssues.status === 'completed') {
+    if (
+      typeof knownIssues.found !== 'boolean'
+      || typeof knownIssues.summary !== 'string'
+      || !Array.isArray(knownIssues.sources)
+      || !knownIssues.sources.every(isSource)
+    ) return null;
+  } else return null;
   return value as unknown as ListingClassification;
 }
 
 export function matchesKnownIssuesFilter(
-  value: KnownModelIssues | null,
+  value: ListingRecord['classification'],
   filter: KnownIssuesFilter,
 ): boolean {
   if (!filter) return true;
-  if (filter === 'pending') return value === null;
-  return value !== null && value.hasIssues === (filter === 'found');
-}
-
-export function asKnownModelIssues(value: unknown): KnownModelIssues | null {
-  if (!isRecord(value)
-    || typeof value.id !== 'string'
-    || typeof value.year !== 'number'
-    || typeof value.hasIssues !== 'boolean'
-    || typeof value.researchedAt !== 'string'
-    || !isStringArray(value.mechanical)
-    || !isStringArray(value.bodywork)
-    || !isStringArray(value.interior)
-    || !isStringArray(value.other)
-    || !Array.isArray(value.sources)
-    || !value.sources.every(isSource)
-    || !Array.isArray(value.issueAssessments)
-    || !value.issueAssessments.every(isIssueAssessmentEntry)) return null;
-  return value as unknown as KnownModelIssues;
-}
-
-function isIssueAssessmentEntry(value: unknown): boolean {
-  if (!isRecord(value)
-    || typeof value.issue !== 'string'
-    || !isIssueCategory(value.category)) return false;
-  if (value.assessment === null) return true;
-  const assessment = value.assessment;
-  return isRecord(assessment)
-    && isSeverity(assessment.severity)
-    && typeof assessment.estimatedCostMinEUR === 'number'
-    && typeof assessment.estimatedCostMaxEUR === 'number'
-    && assessment.estimatedCostMinEUR >= 0
-    && assessment.estimatedCostMaxEUR >= assessment.estimatedCostMinEUR
-    && typeof assessment.reasoning === 'string'
-    && typeof assessment.pricingYear === 'number'
-    && typeof assessment.assessedAt === 'string'
-    && Array.isArray(assessment.sources)
-    && assessment.sources.every(isSource);
-}
-
-function isIssueCategory(value: unknown): boolean {
-  return value === 'mechanical' || value === 'bodywork' || value === 'interior' || value === 'other';
-}
-
-function isSeverity(value: unknown): boolean {
-  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+  const knownIssues = asListingClassification(value)?.knownIssuesWeb;
+  if (!knownIssues) return false;
+  if (filter === 'skipped') return knownIssues.status === 'skipped';
+  return knownIssues.status === 'completed'
+    && knownIssues.found === (filter === 'found');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

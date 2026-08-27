@@ -172,28 +172,11 @@ button, input, select { font: inherit; }
 .known-issues-details-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem; }
 .known-issues-disclaimer { margin: 0; color: var(--muted); font-size: .72rem; line-height: 1.45; }
 .known-issues-sources a { color: var(--accent); text-underline-offset: 2px; }
-.issue-assessment-list { gap: .65rem; }
-.issue-assessment-title { margin: 0; font-weight: 760; }
-.issue-assessment-content { display: grid; gap: .3rem; margin-top: .28rem; }
-.issue-assessment-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; color: var(--muted); font-size: .7rem; }
-.severity-pill { display: inline-flex; border-radius: 999px; padding: .14rem .45rem; border: 1px solid var(--line); font-size: .64rem; font-weight: 850; }
-.severity-low { color: #075c3b; background: #d9f7e8; border-color: #9adab9; }
-.severity-medium { color: #795300; background: #fff5c2; border-color: #ead277; }
-.severity-high { color: #8a3800; background: #fff0d7; border-color: #f4c477; }
-.severity-critical { color: #8b1e2d; background: #ffe1e5; border-color: #f2a3ad; }
-.issue-assessment-reason { margin: 0; color: var(--muted); font-size: .74rem; line-height: 1.45; }
-.issue-assessment-sources { display: flex; flex-wrap: wrap; gap: .3rem .7rem; margin: 0; padding: 0; list-style: none; font-size: .7rem; }
-.issue-assessment-sources a { color: var(--accent); text-underline-offset: 2px; }
-.assessment-pending { display: inline-block; margin-top: .25rem; color: var(--muted); font-size: .7rem; font-weight: 700; }
 
 @media (prefers-color-scheme: dark) {
   .operability-operational { color: #a7f3d0; background: #123c2d; border: 1px solid #276749; }
   .known-issues-found { color: #fed7aa; background: #4a2913; border-color: #8c5428; }
   .known-issues-none { color: #a7f3d0; background: #123c2d; border-color: #276749; }
-  .severity-low { color: #a7f3d0; background: #123c2d; border-color: #276749; }
-  .severity-medium { color: #fde68a; background: #453713; border-color: #7a6323; }
-  .severity-high { color: #fed7aa; background: #4a2913; border-color: #8c5428; }
-  .severity-critical { color: #fecdd3; background: #4c1d25; border-color: #8d3543; }
 }
 
 .listing-specs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; margin: 0; }

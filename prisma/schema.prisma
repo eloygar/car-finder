@@ -8,6 +8,27 @@ datasource db {
   provider = "postgresql"
 }
 
+enum IssueCategory {
+  mecanica
+  chapa
+  interior
+  otros
+}
+
+model VehicleModel {
+  id        String       @id @default(uuid())
+  brand     String
+  name      String
+  slug      String
+  listings  Listing[]
+  issues    KnownIssue[]
+  createdAt DateTime     @default(now())
+
+  @@unique([brand, name])
+  @@index([brand])
+  @@index([slug])
+}
+
 model Listing {
   id           String    @id @default(uuid())
   externalId   String
@@ -38,102 +59,37 @@ model Listing {
   lastSeenAt  DateTime @default(now())
   rawPayload  Json?
 
-  classification        Json?             @db.JsonB
+  classification        Json?     @db.JsonB
   classificationVersion String?
   classifiedAt          DateTime?
-  vehicleModelId        String?
-  knownModelIssuesId    String?
-  vehicleModel          VehicleModel?     @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
-  knownModelIssues      KnownModelIssues? @relation(fields: [knownModelIssuesId], references: [id], onDelete: SetNull)
+
+  vehicleModelId String?
+  vehicleModel   VehicleModel? @relation(fields: [vehicleModelId], references: [id])
 
   @@unique([provider, externalId])
   @@index([brand, model])
   @@index([brand, model, status])
+  @@index([vehicleModelId])
   @@index([province])
   @@index([price])
   @@index([status])
-  @@index([vehicleModelId, year])
-  @@index([knownModelIssuesId])
-}
-
-model VehicleModel {
-  id                    String                 @id @default(uuid())
-  source                String                 @default("wallapop")
-  brand                 String
-  model                 String
-  normalizedBrand       String
-  normalizedModel       String
-  taxonomyStatus        String
-  taxonomySchemaVersion Int?
-  taxonomyCapturedAt    DateTime?
-  active                Boolean                @default(true)
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  listings              Listing[]
-  knownIssues           KnownModelIssues[]
-  issueAssessments      ModelIssueAssessment[]
-
-  @@unique([source, normalizedBrand, normalizedModel])
-  @@index([brand, model])
-  @@map("vehicle_models")
-}
-
-model ModelIssueAssessment {
-  id                  String       @id @default(uuid())
-  vehicleModelId      String
-  issueKey            String
-  issueText           String
-  severity            String
-  estimatedCostMinEUR Int
-  estimatedCostMaxEUR Int
-  reasoning           String
-  sources             Json         @db.JsonB
-  pricingYear         Int
-  anthropicModel      String
-  analysisVersion     String
-  assessedAt          DateTime
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-  vehicleModel        VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
-
-  @@unique([vehicleModelId, issueKey])
-  @@index([severity])
-  @@index([assessedAt])
-  @@map("model_issue_assessments")
-}
-
-model KnownModelIssues {
-  id              String       @id @default(uuid())
-  vehicleModelId  String
-  year            Int
-  mechanical      String[]
-  bodywork        String[]
-  interior        String[]
-  other           String[]
-  sources         Json         @db.JsonB
-  hasIssues       Boolean
-  analysisVersion String
-  anthropicModel  String
-  researchedAt    DateTime
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  vehicleModel    VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
-  listings        Listing[]
-
-  @@unique([vehicleModelId, year])
-  @@index([hasIssues])
-  @@map("known_model_issues")
 }
 
 model KnownIssue {
-  id               String  @id @default(uuid())
+  id               String       @id @default(uuid())
+  vehicleModelId   String
+  vehicleModel     VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
   brand            String
   model            String
   yearFrom         Int?
   yearTo           Int?
   issueDescription String
+  category         IssueCategory @default(otros)
   severity         String
   source           String?
+  contentHash      String
+  createdAt        DateTime     @default(now())
 
+  @@unique([vehicleModelId, contentHash])
   @@index([brand, model])
 }

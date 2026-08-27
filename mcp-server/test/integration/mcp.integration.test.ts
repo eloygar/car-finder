@@ -22,6 +22,11 @@ describe('MCP stdio server', () => {
   beforeAll(async () => {
     prisma = createPrismaClient();
     await cleanup(prisma);
+    await prisma.vehicleModel.upsert({
+      where: { brand_name: { brand: FIXTURE_BRAND, name: FIXTURE_MODEL } },
+      create: { brand: FIXTURE_BRAND, name: FIXTURE_MODEL, slug: `${FIXTURE_BRAND}-${FIXTURE_MODEL}`.toLowerCase() },
+      update: {},
+    });
     await prisma.knownIssue.create({
       data: {
         id: ISSUE_ID,
@@ -30,8 +35,11 @@ describe('MCP stdio server', () => {
         yearFrom: 2019,
         yearTo: null,
         issueDescription: 'Integration issue',
+        category: 'otros',
         severity: 'medium',
         source: 'https://example.com/integration-issue',
+        contentHash: 'integration-mcp-known-issue-hash',
+        vehicleModel: { connect: { brand_name: { brand: FIXTURE_BRAND, name: FIXTURE_MODEL } } },
       },
     });
 
@@ -66,7 +74,6 @@ describe('MCP stdio server', () => {
 
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
-      'assess_issue_severity_and_cost',
       'check_known_issues',
       'check_known_issues_web',
       'check_operational_status',
@@ -146,6 +153,9 @@ function listing(
 async function cleanup(prisma: DatabaseClient): Promise<void> {
   await prisma.listing.deleteMany({ where: { externalId: { in: LISTING_IDS } } });
   await prisma.knownIssue.deleteMany({ where: { id: ISSUE_ID } });
+  await prisma.vehicleModel.deleteMany({
+    where: { brand: FIXTURE_BRAND, name: FIXTURE_MODEL },
+  });
 }
 
 async function waitForExit(pid: number): Promise<void> {

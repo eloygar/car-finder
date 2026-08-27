@@ -1,12 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
 import { createPrismaClient, type DatabaseClient } from '../../../shared/src/db/client.js';
 import { createApp } from '../../src/app.js';
-import { issueKey } from '../../../shared/src/modelIssueAssessment.js';
 
 const brand = 'FacetIntegrationBrand';
-const externalIds = ['facet-integration-found', 'facet-integration-none', 'facet-integration-pending', 'facet-integration-legacy'];
+const externalIds = [
+  'facet-integration-found',
+  'facet-integration-none',
+  'facet-integration-skipped',
+  'facet-integration-legacy',
+];
 const operability = (status: 'operational' | 'non_operational' | 'unknown') => ({
-  status, confidence: 'high', evidence: [], reason: 'Resultado de integración.',
+  status,
+  confidence: 'high',
+  evidence: [],
+  reason: 'Resultado de integración.',
 });
 
 describe('listing facets classification filters', () => {
@@ -15,85 +23,75 @@ describe('listing facets classification filters', () => {
   beforeAll(async () => {
     prisma = createPrismaClient();
     await prisma.listing.deleteMany({ where: { externalId: { in: externalIds } } });
-    await prisma.vehicleModel.deleteMany({ where: { normalizedBrand: brand.toLocaleLowerCase('es') } });
+    const classifications = [
+      {
+        operability: operability('operational'),
+        knownIssuesWeb: { status: 'completed', found: true, summary: 'Hay problemas.', sources: [] },
+      },
+      {
+        operability: operability('unknown'),
+        knownIssuesWeb: { status: 'completed', found: false, summary: 'No hay problemas.', sources: [] },
+      },
+      {
+        operability: operability('non_operational'),
+        knownIssuesWeb: { status: 'skipped', reason: 'non_operational' },
+      },
+      operability('operational'),
+    ];
     for (const [index, externalId] of externalIds.entries()) {
-      const model = await prisma.vehicleModel.create({ data: {
-        source: 'wallapop', brand, model: `Model ${index}`, normalizedBrand: brand.toLocaleLowerCase('es'),
-        normalizedModel: `model ${index}`, taxonomyStatus: 'provisional', active: true,
-      } });
-      const issues = index < 2 ? await prisma.knownModelIssues.create({ data: {
-        vehicleModelId: model.id, year: 2020,
-        mechanical: index === 0 ? ['Fallo conocido.'] : [], bodywork: [], interior: [], other: [], sources: [],
-        hasIssues: index === 0, analysisVersion: 'v1-categorized', anthropicModel: 'test', researchedAt: new Date(),
-      } }) : null;
-      if (index === 0) {
-        await prisma.modelIssueAssessment.create({ data: {
-          vehicleModelId: model.id, issueKey: issueKey('Fallo conocido.'), issueText: 'Fallo conocido.',
-          severity: 'critical', estimatedCostMinEUR: 900, estimatedCostMaxEUR: 2_000,
-          reasoning: 'La incidencia requiere reparación inmediata.',
-          sources: [{ title: 'Taller', url: 'https://example.test/taller' }], pricingYear: 2026,
-          anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
-        } });
-        await prisma.modelIssueAssessment.create({ data: {
-          vehicleModelId: model.id, issueKey: issueKey('Incidencia eliminada.'), issueText: 'Incidencia eliminada.',
-          severity: 'low', estimatedCostMinEUR: 50, estimatedCostMaxEUR: 100,
-          reasoning: 'Evaluación histórica.', sources: [{ title: 'Taller', url: 'https://example.test/old' }],
-          pricingYear: 2025, anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
-        } });
-      }
-      await prisma.listing.create({ data: {
-        externalId, title: `Facet integration ${index}`, price: '10000.00', brand, model: `Model ${index}`,
-        year: 2020, url: `https://example.test/${externalId}`, images: [], contentHash: externalId,
-        classification: index === 3 ? operability('operational') : {
-          operability: operability(index === 0 ? 'operational' : index === 1 ? 'unknown' : 'non_operational'),
+      await prisma.listing.create({
+        data: {
+          externalId,
+          title: `Facet integration ${index}`,
+          price: '10000.00',
+          brand,
+          model: `Model ${index}`,
+          url: `https://example.test/${externalId}`,
+          images: [],
+          contentHash: externalId,
+          classification: classifications[index]!,
+          classificationVersion: index === 3 ? 'v2-operability' : 'v3-operability-web-issues',
+          classifiedAt: new Date('2026-08-27T10:00:00Z'),
         },
-        classificationVersion: index === 3 ? 'v2-operability' : 'v4-operability-model-issues',
-        classifiedAt: new Date('2026-08-27T10:00:00Z'), vehicleModelId: model.id,
-        knownModelIssuesId: issues?.id,
-      } });
+      });
     }
   });
 
   afterAll(async () => {
     await prisma.listing.deleteMany({ where: { externalId: { in: externalIds } } });
-    await prisma.vehicleModel.deleteMany({ where: { normalizedBrand: brand.toLocaleLowerCase('es') } });
     await prisma.$disconnect();
   });
 
-  it('combines v4 operability and relational issue filters', async () => {
+  it('combines v3 operability and known-issues filters', async () => {
     const app = await createApp({ executeSearch: async () => neverSearch(), logger: false, serveWeb: false });
     const found = await app.inject({
-      method: 'GET', url: `/api/listings/facets?brand=${brand}&operability=operational&knownIssues=found`,
+      method: 'GET',
+      url: `/api/listings/facets?brand=${brand}&operability=operational&knownIssues=found`,
     });
-    const none = await app.inject({ method: 'GET', url: `/api/listings/facets?brand=${brand}&knownIssues=none` });
-    const pending = await app.inject({ method: 'GET', url: `/api/listings/facets?brand=${brand}&knownIssues=pending` });
+    const skipped = await app.inject({
+      method: 'GET',
+      url: `/api/listings/facets?brand=${brand}&knownIssues=skipped`,
+    });
     await app.close();
+
+    expect(found.statusCode).toBe(200);
     expect(found.json().brands).toEqual([{ brand, count: 1 }]);
-    expect(none.json().brands).toEqual([{ brand, count: 1 }]);
-    expect(pending.json().brands).toEqual([{ brand, count: 2 }]);
+    expect(skipped.json().brands).toEqual([{ brand, count: 1 }]);
   });
 
-  it('uses both nested and legacy operability paths', async () => {
+  it('uses both v3 and legacy operability paths', async () => {
     const app = await createApp({ executeSearch: async () => neverSearch(), logger: false, serveWeb: false });
-    const response = await app.inject({ method: 'GET', url: `/api/listings/facets?brand=${brand}&operability=operational` });
-    await app.close();
-    expect(response.json().brands).toEqual([{ brand, count: 2 }]);
-  });
-
-  it('returns categorized issues through the listing relation', async () => {
-    const app = await createApp({ executeSearch: async () => neverSearch(), logger: false, serveWeb: false });
-    const response = await app.inject({ method: 'GET', url: `/api/listings?brand=${brand}` });
-    await app.close();
-    const found = response.json().items.find((item: { externalId: string }) => item.externalId === externalIds[0]);
-    expect(found.classification).toEqual({ operability: operability('operational') });
-    expect(found.knownModelIssues).toMatchObject({
-      mechanical: ['Fallo conocido.'], bodywork: [], interior: [], other: [], hasIssues: true,
-      issueAssessments: [{
-        issue: 'Fallo conocido.', category: 'mechanical',
-        assessment: { severity: 'critical', estimatedCostMinEUR: 900, pricingYear: 2026 },
-      }],
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/listings/facets?brand=${brand}&operability=operational`,
     });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().brands).toEqual([{ brand, count: 2 }]);
   });
 });
 
-function neverSearch(): never { throw new Error('Search is not used in listing facet tests'); }
+function neverSearch(): never {
+  throw new Error('Search is not used in listing facet tests');
+}

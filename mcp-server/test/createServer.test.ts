@@ -2,7 +2,11 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createMcpServer } from '../src/createServer.js';
-import type { McpToolRepository, VehicleAnalysisService } from '../src/tools/types.js';
+import type {
+  KnownIssuesStore,
+  McpToolRepository,
+  VehicleAnalysisService,
+} from '../src/tools/types.js';
 
 const closeCallbacks: Array<() => Promise<void>> = [];
 
@@ -10,9 +14,19 @@ afterEach(async () => {
   await Promise.all(closeCallbacks.splice(0).map((close) => close()));
 });
 
-async function connectedClient(repository: McpToolRepository, enableLegacyTools = false) {
+async function connectedClient(
+  repository: McpToolRepository,
+  enableLegacyTools = false,
+  knownIssuesStore?: KnownIssuesStore,
+) {
   const logger = { error: vi.fn() };
-  const server = createMcpServer({ repository, logger, enableLegacyTools, analysisService: analysisService() });
+  const server = createMcpServer({
+    repository,
+    logger,
+    enableLegacyTools,
+    ...(knownIssuesStore ? { knownIssuesStore } : {}),
+    analysisService: analysisService(),
+  });
   const client = new Client({ name: 'unit-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -24,7 +38,7 @@ async function connectedClient(repository: McpToolRepository, enableLegacyTools 
 }
 
 describe('createMcpServer', () => {
-  it('advertises the three AI analysis tools by default and returns structured content', async () => {
+  it('advertises the two AI analysis tools by default and returns structured content', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue(['1.00', '2.00', '3.00']),
@@ -34,10 +48,11 @@ describe('createMcpServer', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name)).toEqual([
       'check_operational_status',
-      'assess_issue_severity_and_cost',
       'check_known_issues_web',
     ]);
-    expect(listed.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
+    const byName = new Map(listed.tools.map((tool) => [tool.name, tool]));
+    expect(byName.get('check_operational_status')?.annotations?.readOnlyHint).toBe(true);
+    expect(byName.get('check_known_issues_web')?.annotations?.readOnlyHint).toBe(false);
     expect(listed.tools.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
 
     const result = await client.callTool({
@@ -69,7 +84,6 @@ describe('createMcpServer', () => {
     const { client } = await connectedClient(repository, true);
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
-      'assess_issue_severity_and_cost',
       'check_known_issues',
       'check_known_issues_web',
       'check_operational_status',
@@ -128,6 +142,27 @@ describe('createMcpServer', () => {
     });
     expect(recovered.isError).not.toBe(true);
   });
+
+  it('persists researched issues through the known-issues writer', async () => {
+    const saveResearchedIssues = vi.fn().mockResolvedValue({ created: 0, updated: 0 });
+    const findByModel = vi.fn().mockResolvedValue(null);
+    const repository: McpToolRepository = {
+      findKnownIssues: vi.fn().mockResolvedValue([]),
+      findComparablePrices: vi.fn().mockResolvedValue([]),
+    };
+    const { client } = await connectedClient(repository, false, { saveResearchedIssues, findByModel });
+
+    const result = await client.callTool({
+      name: 'check_known_issues_web',
+      arguments: { brand: 'Toyota', model: 'Corolla', year: 2023 },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(saveResearchedIssues).toHaveBeenCalledTimes(1);
+    const [query, issues] = saveResearchedIssues.mock.calls[0]!;
+    expect(query).toEqual({ brand: 'Toyota', model: 'Corolla', year: 2023 });
+    expect(Array.isArray(issues)).toBe(true);
+  });
 });
 
 function analysisService(): VehicleAnalysisService {
@@ -141,19 +176,9 @@ function analysisService(): VehicleAnalysisService {
       usage: { inputTokens: 10, outputTokens: 2, webSearchRequests: 0 },
     }),
     checkKnownIssuesWeb: vi.fn().mockResolvedValue({
-      knownIssues: { mechanical: [], bodywork: [], interior: [], other: [], sources: [] },
+      knownIssues: { found: false, summary: 'No documented issues found.', sources: [] },
       model: 'claude-haiku-4-5-20251001',
       usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
-    }),
-    assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
-      assessment: {
-        severity: 'medium', estimatedCostMinEUR: 400, estimatedCostMaxEUR: 900,
-        reasoning: 'La reparación requiere piezas y mano de obra.',
-        sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
-      },
-      pricingYear: 2026,
-      model: 'claude-haiku-4-5-20251001',
-      usage: { inputTokens: 30, outputTokens: 8, webSearchRequests: 1 },
     }),
   };
 }

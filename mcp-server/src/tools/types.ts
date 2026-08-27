@@ -2,6 +2,7 @@ export interface VehicleQuery {
   brand: string;
   model: string;
   year?: number;
+  force?: boolean;
 }
 
 export type VehicleOperabilityStatus = 'operational' | 'non_operational' | 'unknown';
@@ -34,12 +35,22 @@ export interface KnownIssuesWebSource {
   url: string;
 }
 
+export type IssueCategory = 'mecanica' | 'chapa' | 'interior' | 'otros';
+
+export interface ResearchedIssue {
+  description: string;
+  category: IssueCategory;
+  severity: KnownIssueSeverity;
+  yearFrom: number | null;
+  yearTo: number | null;
+  source: string | null;
+}
+
 export interface KnownIssuesWebAnalysis {
-  mechanical: string[];
-  bodywork: string[];
-  interior: string[];
-  other: string[];
+  found: boolean;
+  summary: string;
   sources: KnownIssuesWebSource[];
+  issues: ResearchedIssue[];
 }
 
 export interface KnownIssuesWebToolResult {
@@ -48,33 +59,26 @@ export interface KnownIssuesWebToolResult {
   usage: AnthropicToolUsage;
 }
 
-export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
-
-export interface IssueAssessmentQuery {
-  issue: string;
-  brand: string;
-  model: string;
+export interface KnownIssuesSaveResult {
+  created: number;
+  updated: number;
 }
 
-export interface IssueSeverityAndCostAssessment {
-  severity: IssueSeverity;
-  estimatedCostMinEUR: number;
-  estimatedCostMaxEUR: number;
-  reasoning: string;
-  sources: KnownIssuesWebSource[];
+export interface KnownIssuesReader {
+  findByModel(query: VehicleQuery): Promise<KnownIssuesWebAnalysis | null>;
 }
 
-export interface IssueSeverityAndCostToolResult {
-  assessment: IssueSeverityAndCostAssessment;
-  pricingYear: number;
-  model: string;
-  usage: AnthropicToolUsage;
+export interface KnownIssuesWriter {
+  saveResearchedIssues(query: VehicleQuery, issues: ResearchedIssue[]): Promise<KnownIssuesSaveResult>;
 }
+
+export interface KnownIssuesStore extends KnownIssuesReader, KnownIssuesWriter {}
+
+export type KnownIssuesLookup = (query: VehicleQuery) => Promise<KnownIssuesWebAnalysis>;
 
 export interface VehicleAnalysisService {
   checkOperationalStatus(description: string): Promise<OperationalStatusToolResult>;
   checkKnownIssuesWeb(query: VehicleQuery): Promise<KnownIssuesWebToolResult>;
-  assessIssueSeverityAndCost(query: IssueAssessmentQuery): Promise<IssueSeverityAndCostToolResult>;
 }
 
 export type KnownIssueSeverity = 'low' | 'medium' | 'high' | 'unknown';

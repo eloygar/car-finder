@@ -18,7 +18,6 @@ import {
   type LocalSearchResult,
 } from './localSearch/types.js';
 import { buildListingFacetWhere, type ListingFacetQuery } from './listingFilters.js';
-import { issueKey } from '../../shared/src/modelIssueAssessment.js';
 
 export interface CreateAppOptions {
   executeSearch?: (request: LocalSearchRequest) => Promise<LocalSearchResult>;
@@ -59,35 +58,12 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       const [items, count] = await Promise.all([
         prisma.listing.findMany({
           where,
-          include: { knownModelIssues: true },
           orderBy: { firstSeenAt: 'desc' },
           ...(query.limit ? { take: Number(query.limit) } : {}),
         }),
         prisma.listing.count({ where }),
       ]);
-      const vehicleModelIds = [...new Set(items.flatMap((item) =>
-        item.knownModelIssues ? [item.knownModelIssues.vehicleModelId] : []))];
-      const assessments = vehicleModelIds.length === 0 ? [] : await prisma.modelIssueAssessment.findMany({
-        where: { vehicleModelId: { in: vehicleModelIds } },
-        select: {
-          vehicleModelId: true, issueKey: true, severity: true,
-          estimatedCostMinEUR: true, estimatedCostMaxEUR: true,
-          reasoning: true, sources: true, pricingYear: true, assessedAt: true,
-        },
-      });
-      const byVehicleModel = new Map<string, typeof assessments>();
-      for (const assessment of assessments) {
-        const group = byVehicleModel.get(assessment.vehicleModelId) ?? [];
-        group.push(assessment);
-        byVehicleModel.set(assessment.vehicleModelId, group);
-      }
-      return reply.send({
-        count,
-        items: items.map((item) => withIssueAssessments(
-          item,
-          item.knownModelIssues ? byVehicleModel.get(item.knownModelIssues.vehicleModelId) ?? [] : [],
-        )),
-      });
+      return reply.send({ count, items });
     } finally {
       await prisma.$disconnect();
     }
@@ -195,63 +171,6 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   }
 
   return app;
-}
-
-function withIssueAssessments<T extends {
-  knownModelIssues: null | {
-    vehicleModelId: string;
-    mechanical: string[];
-    bodywork: string[];
-    interior: string[];
-    other: string[];
-  };
-}>(item: T, assessments: Array<{
-  vehicleModelId: string;
-  issueKey: string;
-  severity: string;
-  estimatedCostMinEUR: number;
-  estimatedCostMaxEUR: number;
-  reasoning: string;
-  sources: unknown;
-  pricingYear: number;
-  assessedAt: Date;
-}>) {
-  if (!item.knownModelIssues) return item;
-  const knownModelIssues = item.knownModelIssues;
-  const cached = new Map(assessments.map((assessment) => [assessment.issueKey, assessment]));
-  const categories = [
-    ['mechanical', knownModelIssues.mechanical],
-    ['bodywork', knownModelIssues.bodywork],
-    ['interior', knownModelIssues.interior],
-    ['other', knownModelIssues.other],
-  ] as const;
-  return {
-    ...item,
-    knownModelIssues: {
-      ...knownModelIssues,
-      issueAssessments: categories.flatMap(([category, issues]) => issues.map((issue) => ({
-        issue,
-        category,
-        assessment: publicAssessment(cached.get(issueKey(issue))),
-      }))),
-    },
-  };
-}
-
-function publicAssessment(assessment: {
-  vehicleModelId: string;
-  issueKey: string;
-  severity: string;
-  estimatedCostMinEUR: number;
-  estimatedCostMaxEUR: number;
-  reasoning: string;
-  sources: unknown;
-  pricingYear: number;
-  assessedAt: Date;
-} | undefined) {
-  if (!assessment) return null;
-  const { issueKey: _issueKey, vehicleModelId: _vehicleModelId, ...result } = assessment;
-  return result;
 }
 
 function classifySearchFailure(error: unknown): { code: string; message: string } {

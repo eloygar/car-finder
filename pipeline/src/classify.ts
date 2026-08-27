@@ -12,7 +12,6 @@ import { runClassification } from './classify/runClassification.js';
 import type { ClassificationRunOptions } from './classify/types.js';
 import {
   DEFAULT_KNOWN_ISSUES_WEB_MODEL,
-  DEFAULT_ISSUE_ASSESSMENT_MODEL,
   DEFAULT_OPERATIONAL_STATUS_MODEL,
 } from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
 
@@ -20,7 +19,6 @@ export function parseClassificationArgs(args: readonly string[]): Classification
   let all = false;
   let dryRun = false;
   let force = false;
-  let refreshKnownIssues = false;
   let explicitLimit: number | undefined;
   let only: string | undefined;
   const start = args[0] === '--' ? 1 : 0;
@@ -40,10 +38,6 @@ export function parseClassificationArgs(args: readonly string[]): Classification
       force = true;
       continue;
     }
-    if (argument === '--refresh-known-issues') {
-      refreshKnownIssues = true;
-      continue;
-    }
     if (argument !== '--limit' && argument !== '--only') {
       throw new Error(`Unknown argument: ${argument}`);
     }
@@ -61,7 +55,6 @@ export function parseClassificationArgs(args: readonly string[]): Classification
     all,
     dryRun,
     force,
-    refreshKnownIssues,
     ...(!all && !only ? { limit: explicitLimit ?? 10 } : {}),
     ...(only ? { only } : {}),
   };
@@ -78,23 +71,22 @@ async function main(): Promise<void> {
     }
     const operationalStatusModel = process.env.OPERATIONAL_STATUS_MODEL ?? DEFAULT_OPERATIONAL_STATUS_MODEL;
     const knownIssuesWebModel = process.env.KNOWN_ISSUES_WEB_MODEL ?? DEFAULT_KNOWN_ISSUES_WEB_MODEL;
-    const issueAssessmentModel = process.env.ISSUE_ASSESSMENT_MODEL ?? DEFAULT_ISSUE_ASSESSMENT_MODEL;
     prisma = createPrismaClient();
+    const repository = new PrismaClassificationRepository(prisma);
     const summary = await runClassification({
       run,
-      repository: new PrismaClassificationRepository(prisma),
+      repository,
       logger,
       ...(!run.dryRun ? {
-        createSession: () => createClassifierSession({ logger }),
+        createSession: () => createClassifierSession({ logger, repository }),
       } : {}),
     });
     logger.info({
       ...summary,
       operationalStatusModel: run.dryRun ? undefined : operationalStatusModel,
       knownIssuesWebModel: run.dryRun ? undefined : knownIssuesWebModel,
-      issueAssessmentModel: run.dryRun ? undefined : issueAssessmentModel,
     }, 'Classification run completed');
-    if (summary.failed > 0 || summary.assessmentFailed > 0) process.exitCode = 1;
+    if (summary.failed > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof HelpRequested) {
       process.stdout.write(`${usage()}\n`);
@@ -123,7 +115,6 @@ function usage(): string {
     '  --only <externalId> Process one listing by external ID',
     '  --dry-run           Select and summarize without MCP or Anthropic calls',
     '  --force             Include listings already classified with the current version',
-    '  --refresh-known-issues  Ignore cached model-year web research',
     '  --help              Show this help',
   ].join('\n');
 }

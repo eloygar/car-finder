@@ -11,6 +11,12 @@ describe('ListingClassification', () => {
         evidence: ['funciona perfectamente'],
         reason: 'The description explicitly says it works.',
       },
+      knownIssuesWeb: {
+        status: 'completed',
+        found: false,
+        summary: 'No documented model-level issues found.',
+        sources: [],
+      },
     };
 
     expect(parseListingClassification(value)).toEqual(value);

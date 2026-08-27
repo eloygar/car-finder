@@ -24,10 +24,15 @@ export function buildListingFacetWhere(query: ListingFacetQuery): Record<string,
   }
   if (query.knownIssues === 'found' || query.knownIssues === 'none') {
     classificationConditions.push({
-      knownModelIssues: { is: { hasIssues: query.knownIssues === 'found' } },
+      classification: {
+        path: ['knownIssuesWeb', 'found'],
+        equals: query.knownIssues === 'found',
+      },
     });
-  } else if (query.knownIssues === 'pending') {
-    classificationConditions.push({ knownModelIssuesId: null });
+  } else if (query.knownIssues === 'skipped') {
+    classificationConditions.push({
+      classification: { path: ['knownIssuesWeb', 'status'], equals: 'skipped' },
+    });
   }
   if (classificationConditions.length > 0) where.AND = classificationConditions;
   return where;

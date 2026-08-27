@@ -1,6 +1,25 @@
+import { createHash } from 'node:crypto';
+
 import pino from 'pino';
 
 import { createPrismaClient, type DatabaseClient } from '../shared/src/db/client.js';
+
+function slugify(brand: string, model: string): string {
+  return `${brand}-${model}`
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function issueContentHash(record: KnownIssueSeedRecord): string {
+  return createHash('sha1')
+    .update(
+      [record.brand, record.model, record.issueDescription, record.severity, record.yearFrom ?? '', record.yearTo ?? '', record.source].join('|'),
+    )
+    .digest('hex');
+}
 
 export interface KnownIssueSeedRecord {
   id: string;
@@ -150,10 +169,40 @@ export async function seedKnownIssues(prisma: DatabaseClient): Promise<SeedKnown
   });
   const existingIds = new Set(existing.map(({ id }) => id));
 
+  const uniqueModels = new Map<string, { brand: string; name: string; slug: string }>();
+  for (const record of KNOWN_ISSUE_SEED) {
+    uniqueModels.set(slugify(record.brand, record.model), {
+      brand: record.brand,
+      name: record.model,
+      slug: slugify(record.brand, record.model),
+    });
+  }
+  await prisma.$transaction(
+    [...uniqueModels.values()].map((model) =>
+      prisma.vehicleModel.upsert({
+        where: { brand_name: { brand: model.brand, name: model.name } },
+        create: model,
+        update: {},
+      }),
+    ),
+  );
+
   await prisma.$transaction(
     KNOWN_ISSUE_SEED.map((record) => prisma.knownIssue.upsert({
       where: { id: record.id },
-      create: record,
+      create: {
+        id: record.id,
+        brand: record.brand,
+        model: record.model,
+        yearFrom: record.yearFrom,
+        yearTo: record.yearTo,
+        issueDescription: record.issueDescription,
+        severity: record.severity,
+        source: record.source,
+        category: 'otros',
+        contentHash: issueContentHash(record),
+        vehicleModel: { connect: { brand_name: { brand: record.brand, name: record.model } } },
+      },
       update: {
         brand: record.brand,
         model: record.model,
@@ -162,6 +211,8 @@ export async function seedKnownIssues(prisma: DatabaseClient): Promise<SeedKnown
         issueDescription: record.issueDescription,
         severity: record.severity,
         source: record.source,
+        category: 'otros',
+        contentHash: issueContentHash(record),
       },
     })),
   );

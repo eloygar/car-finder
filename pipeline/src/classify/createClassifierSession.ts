@@ -2,11 +2,12 @@ import { Client } from '@modelcontextprotocol/client';
 
 import { createServerTransport } from '../../../mcp-server/src/smoke.js';
 import { SequentialMcpClassifier, type ClassificationMcpBridge } from './SequentialMcpClassifier.js';
-import type { ClassifierSession } from './types.js';
+import type { ClassifierSession, ClassificationRepository } from './types.js';
 import type { BatchLogger } from '../search.js';
 
 export async function createClassifierSession(options: {
   logger?: BatchLogger;
+  repository?: ClassificationRepository;
 }): Promise<ClassifierSession> {
   const mcpClient = new Client({ name: 'car-finder-classifier', version: '0.1.0' });
   const transport = createServerTransport({ stderr: 'inherit' });
@@ -30,6 +31,8 @@ export async function createClassifierSession(options: {
     };
     const classifier = await SequentialMcpClassifier.create({
       mcp: bridge,
+      knownIssuesLookup: (query) => options.repository?.findStoredKnownIssues(query)
+        ?? Promise.resolve({ found: false, summary: '', sources: [], issues: [] }),
       logger: options.logger,
     });
     return {

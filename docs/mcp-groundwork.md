@@ -1,13 +1,11 @@
 # MCP groundwork
 
-The local MCP server exposes three analysis tools over stdio by default:
+The local MCP server exposes two classification tools over stdio by default:
 
 - `check_operational_status` uses Claude Sonnet 5 without tools to decide whether the vehicle can
   start and move under its own power, using only evidence grounded in the seller description.
 - `check_known_issues_web` uses Claude Haiku 4.5 with Anthropic's native `web_search` tool to
-  return documented model-year problems categorized as mechanical, bodywork, interior, or other.
-- `assess_issue_severity_and_cost` uses Claude Haiku 4.5 and mandatory web search to assess one
-  issue's severity and an evidence-based current-year repair-cost range for Spain.
+  summarize documented model-level problems and recalls.
 
 The previous `classify_vehicle_operability`, `check_known_issues`, and `estimate_market_price`
 tools are disabled by default. Set
@@ -18,7 +16,6 @@ Start PostgreSQL, apply migrations, and load the starter records:
 ```sh
 pnpm db:up
 pnpm db:migrate
-pnpm db:sync-model-taxonomy
 pnpm db:seed-known-issues
 ```
 
@@ -45,30 +42,20 @@ make classify-dry
 make classify CLASSIFY_LIMIT=10
 make classify-one CLASSIFY_ID=<wallapop-external-id>
 make classify-all
-make assess-issues-dry
-make assess-issues ISSUE_ASSESS_LIMIT=20
 ```
 
 `classify-dry` only queries PostgreSQL and never starts MCP or Anthropic. Live runs classify active
-listings without a classification or with a version older than `v4-operability-model-issues`. Operability is stored
-in the `classification` JSONB document with `classificationVersion` and `classifiedAt`. Model-year research is stored
-once in `known_model_issues` and linked to every matching listing. A second run
+listings without a classification or with a version older than `v3-operability-web-issues`. Successful results are stored
+in the `classification` JSONB document with `classificationVersion` and `classifiedAt`. A second run
 skips current results unless `--force` is passed directly to `pipeline:classify`.
 
 Each listing follows a fixed sequence implemented by the pipeline, with no model acting as a tool
 orchestrator. The pipeline first invokes `check_operational_status`. A `non_operational` result is
-persisted without a web request. Both `operational` and `unknown` reuse cached model-year research,
-or invoke `check_known_issues_web` when no row exists. Listings without a year skip research. Use
-`--force --refresh-known-issues` to replace an existing model-year result. A changed `contentHash`
-rolls back the complete transaction, including provisional identities and research. Persisted reasoning
-and issue descriptions are written in Spanish; literal evidence excerpts keep the seller's language.
-
-After a listing and any new model-year issues are committed, missing issue assessments run independently.
-Successful results are cached permanently in `model_issue_assessments` by vehicle model and the SHA-256
-hash of normalized issue text. One failed assessment remains pending without rolling back the listing,
-known issues, or other successful assessments. `pipeline:assess-issues` backfills existing rows; add
-`--force` to replace cached assessments, oldest first. Cached costs retain their original `pricingYear`
-and do not expire automatically.
+persisted immediately with `knownIssuesWeb.status=skipped`; no web request is made. Both
+`operational` and `unknown` optimistically invoke `check_known_issues_web` with the listing's brand,
+model, and optional year. A changed `contentHash` prevents an old in-flight result from being saved.
+Persisted reasoning is written in Spanish: `operability.reason` and
+`knownIssuesWeb.summary`. Literal evidence excerpts keep the seller's original language.
 
 Live commands can incur Anthropic charges. Start with `make classify-one` and inspect the structured
 summary, including aggregate input/output token counts, before running `make classify-all`.

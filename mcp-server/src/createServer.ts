@@ -7,21 +7,24 @@ import { estimateMarketPrice } from './tools/estimateMarketPrice.js';
 import {
   checkKnownIssuesOutputSchema,
   estimateMarketPriceOutputSchema,
-  issueAssessmentInputSchema,
-  issueSeverityAndCostToolOutputSchema,
   knownIssuesWebToolOutputSchema,
-  knownIssuesWebQuerySchema,
   operationalStatusInputSchema,
   operationalStatusToolOutputSchema,
   vehicleOperabilityOutputSchema,
   vehicleOperabilitySubmissionSchema,
   vehicleQuerySchema,
 } from './tools/schemas.js';
-import type { McpToolRepository, VehicleAnalysisService } from './tools/types.js';
+import type {
+  KnownIssuesStore,
+  KnownIssuesWebToolResult,
+  McpToolRepository,
+  VehicleAnalysisService,
+} from './tools/types.js';
 
 export interface CreateMcpServerOptions {
   analysisService: VehicleAnalysisService;
   repository?: McpToolRepository;
+  knownIssuesStore?: KnownIssuesStore;
   logger: Pick<Logger, 'error'>;
   enableLegacyTools?: boolean;
 }
@@ -29,6 +32,7 @@ export interface CreateMcpServerOptions {
 export function createMcpServer({
   analysisService,
   repository,
+  knownIssuesStore,
   logger,
   enableLegacyTools = false,
 }: CreateMcpServerOptions): McpServer {
@@ -54,36 +58,38 @@ export function createMcpServer({
   );
 
   server.registerTool(
-    'assess_issue_severity_and_cost',
-    {
-      title: 'Assess Known Issue Severity and Repair Cost',
-      description: 'Use Claude Haiku 4.5 and native web search to assess severity and current repair costs in Spain.',
-      inputSchema: issueAssessmentInputSchema,
-      outputSchema: issueSeverityAndCostToolOutputSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
-    },
-    async (query) => {
-      try {
-        return toolSuccess(await analysisService.assessIssueSeverityAndCost(query));
-      } catch (error) {
-        logToolFailure(logger, 'assess_issue_severity_and_cost', error);
-        return toolFailure('issue_assessment_failed', 'Issue severity and repair cost could not be assessed.');
-      }
-    },
-  );
-
-  server.registerTool(
     'check_known_issues_web',
     {
       title: 'Check Known Vehicle Issues on the Web',
-      description: 'Use Claude Haiku 4.5 and native web search to categorize documented problems for one vehicle model-year.',
-      inputSchema: knownIssuesWebQuerySchema,
+      description: 'Use Claude Haiku 4.5 and its native web search tool to summarize documented model-level problems and recalls, classify them by category, and persist them linked to the model catalog.',
+      inputSchema: vehicleQuerySchema,
       outputSchema: knownIssuesWebToolOutputSchema,
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     async (query) => {
       try {
-        return toolSuccess(await analysisService.checkKnownIssuesWeb(query));
+        const { force, ...modelQuery } = query;
+        let result: KnownIssuesWebToolResult | undefined;
+
+        if (!force && knownIssuesStore) {
+          const cached = await knownIssuesStore.findByModel(modelQuery);
+          if (cached) {
+            result = {
+              knownIssues: cached,
+              model: 'cache',
+              usage: { inputTokens: 0, outputTokens: 0, webSearchRequests: 0 },
+            };
+          }
+        }
+
+        if (!result) {
+          result = await analysisService.checkKnownIssuesWeb(modelQuery);
+          if (knownIssuesStore) {
+            await knownIssuesStore.saveResearchedIssues(modelQuery, result.knownIssues.issues ?? []);
+          }
+        }
+
+        return toolSuccess(result);
       } catch (error) {
         logToolFailure(logger, 'check_known_issues_web', error);
         return toolFailure('known_issues_web_failed', 'Known vehicle issues could not be researched.');
