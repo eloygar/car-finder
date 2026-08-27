@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPrismaClient, type DatabaseClient } from '../../../shared/src/db/client.js';
 import { createApp } from '../../src/app.js';
 import { issueKey } from '../../../shared/src/modelIssueAssessment.js';
+import { KNOWN_MODEL_ISSUES_VERSION } from '../../../shared/src/knownModelIssues.js';
 
 const brand = 'FacetIntegrationBrand';
 const externalIds = ['facet-integration-found', 'facet-integration-none', 'facet-integration-pending', 'facet-integration-legacy'];
@@ -21,10 +22,13 @@ describe('listing facets classification filters', () => {
         source: 'wallapop', brand, model: `Model ${index}`, normalizedBrand: brand.toLocaleLowerCase('es'),
         normalizedModel: `model ${index}`, taxonomyStatus: 'provisional', active: true,
       } });
-      const issues = index < 2 ? await prisma.knownModelIssues.create({ data: {
+      const issues = index < 2 || index === 3 ? await prisma.knownModelIssues.create({ data: {
         vehicleModelId: model.id, year: 2020,
-        mechanical: index === 0 ? ['Fallo conocido.'] : [], bodywork: [], interior: [], other: [], sources: [],
-        hasIssues: index === 0, analysisVersion: 'v1-categorized', anthropicModel: 'test', researchedAt: new Date(),
+        mechanical: index === 0 ? ['Fallo conocido.'] : index === 3 ? ['Premature water pump failure.'] : [],
+        bodywork: [], interior: [], other: [], sources: [],
+        hasIssues: index === 0 || index === 3,
+        analysisVersion: index === 3 ? 'v1-categorized' : KNOWN_MODEL_ISSUES_VERSION,
+        anthropicModel: 'test', researchedAt: new Date(),
       } }) : null;
       if (index === 0) {
         await prisma.modelIssueAssessment.create({ data: {
@@ -98,11 +102,18 @@ describe('listing facets classification filters', () => {
   });
 
   it('returns categorized issues through the listing relation', async () => {
-    const app = await createApp({ executeSearch: async () => neverSearch(), logger: false, serveWeb: false });
+    const app = await createApp({
+      executeSearch: async () => neverSearch(), logger: false, serveWeb: false,
+      features: { listingIssueAssessments: true },
+    });
     const response = await app.inject({ method: 'GET', url: `/api/listings?brand=${brand}` });
     await app.close();
     const found = response.json().items.find((item: { externalId: string }) => item.externalId === externalIds[0]);
-    expect(response.json().features).toEqual({ modelIssueAssessments: false });
+    const legacy = response.json().items.find((item: { externalId: string }) => item.externalId === externalIds[3]);
+    expect(response.json().features).toEqual({
+      modelIssueAssessments: false,
+      listingIssueAssessments: true,
+    });
     expect(found.classification).toEqual({ operability: operability('operational') });
     expect(found.knownModelIssues).toMatchObject({
       mechanical: ['Fallo conocido.'], bodywork: [], interior: [], other: [], hasIssues: true,
@@ -118,6 +129,7 @@ describe('listing facets classification filters', () => {
         assessment: { severity: 'low', estimatedCostMinEUR: 150, pricingYear: 2026 },
       }],
     });
+    expect(legacy.knownModelIssues).toBeNull();
   });
 });
 

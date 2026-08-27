@@ -28,4 +28,23 @@ describe('knownIssuesWebAnalysisSchema', () => {
       found: true, summary: 'Problema conocido.', sources: [],
     })).toThrow();
   });
+
+  it('rejects issue descriptions written in English while preserving original source titles', () => {
+    expect(() => knownIssuesWebAnalysisSchema.parse({
+      ...valid,
+      mechanical: ['Premature water pump failure.'],
+      sources: [{ title: 'Official safety recall', url: 'https://example.test/recall' }],
+    })).toThrow('Spanish');
+    expect(knownIssuesWebAnalysisSchema.parse({
+      ...valid,
+      sources: [{ title: 'Official safety recall', url: 'https://example.test/recall' }],
+    }).sources[0]?.title).toBe('Official safety recall');
+  });
+
+  it('rejects bilingual issue descriptions instead of accepting a Spanish suffix', () => {
+    expect(() => knownIssuesWebAnalysisSchema.parse({
+      ...valid,
+      mechanical: ['Premature water pump failure - fallo prematuro de la bomba de agua.'],
+    })).toThrow('Spanish');
+  });
 });

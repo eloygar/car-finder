@@ -224,7 +224,11 @@ export function ListingsPage() {
             <span className="brand-mark"><ArrowSquareOut size={25} weight="fill" /></span>
             <span>Car Finder</span>
           </a>
-          <a className="brand-link" href="/">← Volver a la búsqueda</a>
+          <nav className="app-nav">
+            <a className="nav-link" href="/">Búsqueda</a>
+            <a className="nav-link" href="/buscar-anuncios">Recomendador</a>
+            <a className="nav-link" href="/anuncios">Anuncios guardados</a>
+          </nav>
         </div>
       </header>
 
@@ -267,6 +271,7 @@ export function ListingsPage() {
             removingId={removingId}
             deleting={deleting}
             modelIssueAssessmentsEnabled={data?.features?.modelIssueAssessments ?? false}
+            listingIssueAssessmentsEnabled={data?.features?.listingIssueAssessments ?? false}
             onSearch={setSearch}
             onStatus={setStatus}
             onBrand={(value) => {
@@ -313,6 +318,7 @@ function ListingsGrid({
   removingId,
   deleting,
   modelIssueAssessmentsEnabled,
+  listingIssueAssessmentsEnabled,
   onSearch,
   onStatus,
   onBrand,
@@ -340,6 +346,7 @@ function ListingsGrid({
   removingId: string | null;
   deleting: boolean;
   modelIssueAssessmentsEnabled: boolean;
+  listingIssueAssessmentsEnabled: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: string) => void;
   onBrand: (value: string) => void;
@@ -451,6 +458,7 @@ function ListingsGrid({
               removing={removingId === item.id}
               disabled={deleting}
               modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+              listingIssueAssessmentsEnabled={listingIssueAssessmentsEnabled}
               onToggle={() => onToggle(expanded === item.id ? null : item.id)}
               onDelete={() => onDelete(item)}
             />
@@ -468,6 +476,7 @@ function ListingCard({
   removing,
   disabled,
   modelIssueAssessmentsEnabled,
+  listingIssueAssessmentsEnabled,
   onToggle,
   onDelete,
 }: {
@@ -477,6 +486,7 @@ function ListingCard({
   removing: boolean;
   disabled: boolean;
   modelIssueAssessmentsEnabled: boolean;
+  listingIssueAssessmentsEnabled: boolean;
   onToggle: () => void;
   onDelete: () => void;
 }) {
@@ -521,10 +531,11 @@ function ListingCard({
           )}
         </h3>
         {subtitle ? <p className="listing-subtitle">{subtitle}</p> : null}
-        <ListingPrice item={item} />
+        <ListingPrice item={item} listingIssueAssessmentsEnabled={listingIssueAssessmentsEnabled} />
         <ClassificationSummary
           item={item}
           modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+          listingIssueAssessmentsEnabled={listingIssueAssessmentsEnabled}
         />
 
         {specs.length > 0 ? (
@@ -553,14 +564,26 @@ function ListingCard({
       </div>
 
       {open ? (
-        <ListingDetails item={item} modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled} />
+        <ListingDetails
+          item={item}
+          modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+          listingIssueAssessmentsEnabled={listingIssueAssessmentsEnabled}
+        />
       ) : null}
     </article>
   );
 }
 
-export function ListingPrice({ item }: { item: ListingRecord }) {
-  const repairCost = listingRepairCostRange(item.listingIssueExtraction);
+export function ListingPrice({
+  item,
+  listingIssueAssessmentsEnabled = true,
+}: {
+  item: ListingRecord;
+  listingIssueAssessmentsEnabled?: boolean;
+}) {
+  const repairCost = listingIssueAssessmentsEnabled
+    ? listingRepairCostRange(item.listingIssueExtraction)
+    : null;
 
   return (
     <div className="listing-price">
@@ -580,9 +603,11 @@ export function ListingPrice({ item }: { item: ListingRecord }) {
 function ListingDetails({
   item,
   modelIssueAssessmentsEnabled,
+  listingIssueAssessmentsEnabled,
 }: {
   item: ListingRecord;
   modelIssueAssessmentsEnabled: boolean;
+  listingIssueAssessmentsEnabled: boolean;
 }) {
   const rows: Array<{ label: string; value: string }> = [];
   const push = (label: string, value: string | null | undefined) => {
@@ -613,6 +638,7 @@ function ListingDetails({
       <ClassificationDetails
         item={item}
         modelIssueAssessmentsEnabled={modelIssueAssessmentsEnabled}
+        listingIssueAssessmentsEnabled={listingIssueAssessmentsEnabled}
       />
       <dl className="listing-details-grid">
         {rows.map((row) => (
@@ -635,9 +661,11 @@ function ListingDetails({
 export function ClassificationSummary({
   item,
   modelIssueAssessmentsEnabled = true,
+  listingIssueAssessmentsEnabled = true,
 }: {
   item: ListingRecord;
   modelIssueAssessmentsEnabled?: boolean;
+  listingIssueAssessmentsEnabled?: boolean;
 }) {
   const classification = asOperabilityClassification(item.classification);
   const currentClassification = item.classificationVersion === 'v5-operability-listing-issues'
@@ -672,7 +700,10 @@ export function ClassificationSummary({
             />
           ) : null}
         </div>
-        <ListingIssuesCardSummary extraction={listingIssues} />
+        <ListingIssuesCardSummary
+          extraction={listingIssues}
+          assessmentsEnabled={listingIssueAssessmentsEnabled}
+        />
       </div>
     );
   }
@@ -692,9 +723,11 @@ export function ClassificationSummary({
 export function ClassificationDetails({
   item,
   modelIssueAssessmentsEnabled = true,
+  listingIssueAssessmentsEnabled = true,
 }: {
   item: ListingRecord;
   modelIssueAssessmentsEnabled?: boolean;
+  listingIssueAssessmentsEnabled?: boolean;
 }) {
   const classification = asOperabilityClassification(item.classification);
   const knownIssues = asKnownModelIssues(item.knownModelIssues);
@@ -725,7 +758,10 @@ export function ClassificationDetails({
             </ul>
           </div>
         ) : null}
-        <ListingIssuesDetails extraction={listingIssues} />
+        <ListingIssuesDetails
+          extraction={listingIssues}
+          assessmentsEnabled={listingIssueAssessmentsEnabled}
+        />
         {knownIssues ? (
           <div className="known-issues-details">
             <div className="known-issues-details-head">
@@ -823,13 +859,21 @@ function KnownIssuesBadge({
   );
 }
 
-function ListingIssuesCardSummary({ extraction }: { extraction: ListingIssueExtraction | null }) {
+function ListingIssuesCardSummary({
+  extraction,
+  assessmentsEnabled,
+}: {
+  extraction: ListingIssueExtraction | null;
+  assessmentsEnabled: boolean;
+}) {
   if (!extraction) {
     return <div className="listing-issues-summary"><span className="classification-pending">Anuncio sin analizar</span></div>;
   }
-  const assessments = extraction.issues.map((issue) => issue.assessment).filter(Boolean);
+  const assessments = assessmentsEnabled
+    ? extraction.issues.map((issue) => issue.assessment).filter(Boolean)
+    : [];
   const maximum = maximumSeverity(assessments);
-  const pending = extraction.issues.length - assessments.length;
+  const pending = assessmentsEnabled ? extraction.issues.length - assessments.length : 0;
   const detail = [
     maximum ? `Gravedad máxima: ${severityLabel(maximum)}` : null,
     pending > 0 ? `${pending} pendiente${pending === 1 ? '' : 's'}` : null,
@@ -841,12 +885,18 @@ function ListingIssuesCardSummary({ extraction }: { extraction: ListingIssueExtr
           ? 'Sin defectos declarados'
           : `${extraction.issues.length} incidencia${extraction.issues.length === 1 ? '' : 's'} del anuncio`}
       </span>
-      {extraction.issues.length > 0 ? <p className="known-issues-preview">{detail || 'Evaluadas'}</p> : null}
+      {detail ? <p className="known-issues-preview">{detail}</p> : null}
     </div>
   );
 }
 
-function ListingIssuesDetails({ extraction }: { extraction: ListingIssueExtraction | null }) {
+function ListingIssuesDetails({
+  extraction,
+  assessmentsEnabled,
+}: {
+  extraction: ListingIssueExtraction | null;
+  assessmentsEnabled: boolean;
+}) {
   return (
     <div className="listing-issues-details">
       <div className="known-issues-details-head">
@@ -865,9 +915,9 @@ function ListingIssuesDetails({ extraction }: { extraction: ListingIssueExtracti
               <li key={`${issue.category}:${issue.description}`}>
                 <p className="issue-assessment-title">{issue.description}</p>
                 <p className="listing-issue-evidence">Evidencia: {issue.evidence.map((entry) => `“${entry}”`).join(' · ')}</p>
-                {issue.assessment ? <AssessmentDetails assessment={issue.assessment} /> : (
+                {assessmentsEnabled && issue.assessment ? <AssessmentDetails assessment={issue.assessment} /> : assessmentsEnabled ? (
                   <span className="assessment-pending">Evaluación pendiente</span>
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

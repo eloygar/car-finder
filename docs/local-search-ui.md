@@ -54,3 +54,19 @@ Reconciliation starts only after the capture has completed and its JSON file
 has been replaced successfully. If PostgreSQL is unavailable, the valid capture
 is retained and the UI reports that database synchronization is pending. No
 absent listings are marked unavailable.
+
+## Classified-listing recommender
+
+The separate `/buscar-anuncios` view searches only active database listings
+whose operability classification is `operational` or `unknown`. It never calls
+Wallapop, Anthropic, or MCP tools. Price and mileage are soft targets, while a
+versioned deterministic heuristic also considers straight-line distance from
+Vigo, the number of listing-specific issues, and the number of current known
+issues for the model-year. Listing issue severity and repair cost never affect
+the score. When `ENABLE_LISTING_ISSUE_ASSESSMENTS=false`, cached severity and
+repair costs are additionally hidden from the UI.
+
+Scores are calculated for each request and are not persisted. Every result
+includes the Spanish-language point breakdown used to produce its 0–100 score.
+The public endpoints are `GET /api/classified-listings/search-options` and
+`POST /api/classified-listings/search`.

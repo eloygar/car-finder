@@ -44,6 +44,10 @@ export const operationalStatusToolOutputSchema = z.strictObject({
 
 export const issueCategorySchema = z.enum(['mechanical', 'bodywork', 'interior', 'other']);
 const briefKnownIssueSchema = z.string().trim().min(1).max(300);
+const spanishKnownIssueSchema = briefKnownIssueSchema.refine(
+  isSpanishKnownIssue,
+  'Known issue descriptions must be written in Spanish',
+);
 const httpSourceSchema = z.strictObject({
   title: z.string().trim().min(1),
   url: z.string().trim().url().refine((value) => {
@@ -80,7 +84,7 @@ function validateUniqueCategorizedIssues<T>(
 }
 
 export const knownIssuesWebAnalysisSchema = z.strictObject({
-  ...categorizedIssuesShape(briefKnownIssueSchema),
+  ...categorizedIssuesShape(spanishKnownIssueSchema),
   sources: z.array(httpSourceSchema),
 }).superRefine((value, context) => validateUniqueCategorizedIssues(value, context, (issue) => issue));
 
@@ -136,6 +140,25 @@ export const issueSeverityAndCostToolOutputSchema = z.strictObject({
   model: z.string().trim().min(1),
   usage: webAnthropicToolUsageSchema,
 });
+
+function isSpanishKnownIssue(value: string): boolean {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase('es');
+  const words = new Set(normalized.match(/[\p{L}]+/gu) ?? []);
+  const spanishMarkers = [
+    'averia', 'avería', 'bomba', 'cambio', 'campaña', 'carroceria', 'carrocería', 'corrosion', 'corrosión',
+    'defecto', 'defectuoso', 'desgaste', 'direccion', 'dirección', 'electrico', 'eléctrico', 'fallo', 'freno',
+    'frenos', 'fuga', 'motor', 'perdida', 'pérdida', 'pintura', 'problema', 'recall', 'refrigeracion',
+    'refrigeración', 'rotura', 'ruido', 'seguridad', 'sistema', 'software', 'suspension', 'suspensión',
+    'transmision', 'transmisión', 'de', 'del', 'el', 'en', 'la', 'las', 'los', 'puede', 'prematuro', 'que',
+  ];
+  const englishMarkers = [
+    'brake', 'causes', 'coolant', 'electrical', 'engine', 'excessive', 'failure', 'fault', 'faulty', 'issue',
+    'leak', 'loss', 'paint', 'premature', 'problems', 'pump', 'rust', 'steering', 'transmission', 'water', 'wear',
+  ];
+  const spanishScore = spanishMarkers.filter((word) => words.has(word)).length;
+  const englishScore = englishMarkers.filter((word) => words.has(word)).length;
+  return englishScore === 0 && (/[áéíóúüñ¿¡]/u.test(normalized) || spanishScore >= 1);
+}
 
 const nullableYear = z.number().int().nullable();
 

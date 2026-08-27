@@ -149,6 +149,28 @@ describe('listing classification presentation', () => {
 
     expect(renderToStaticMarkup(<ListingPrice item={item} />)).not.toContain('listing-repair-cost');
   });
+
+  it('hides cached and pending listing assessments when their feature is disabled', () => {
+    const item = listing(null, true, listingIssues);
+    const price = renderToStaticMarkup(
+      <ListingPrice item={item} listingIssueAssessmentsEnabled={false} />,
+    );
+    const summary = renderToStaticMarkup(
+      <ClassificationSummary item={item} listingIssueAssessmentsEnabled={false} />,
+    );
+    const details = renderToStaticMarkup(
+      <ClassificationDetails item={item} listingIssueAssessmentsEnabled={false} />,
+    );
+    expect(price).not.toContain('listing-repair-cost');
+    expect(summary).toContain('2 incidencias del anuncio');
+    expect(summary).not.toContain('Gravedad máxima');
+    expect(summary).not.toContain('pendiente');
+    expect(details).toContain('Pierde aceite.');
+    expect(details).toContain('golpe en puerta');
+    expect(details).not.toContain('150');
+    expect(details).not.toContain('Evaluación pendiente');
+    expect(details).not.toContain('Daño estético reparable');
+  });
 });
 
 function listing(

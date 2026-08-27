@@ -1,4 +1,5 @@
 import type { ListingClassification } from '../../../shared/src/classification/ListingClassification.js';
+export { KNOWN_MODEL_ISSUES_VERSION } from '../../../shared/src/knownModelIssues.js';
 
 import type {
   ExtractedVehicleIssues,
@@ -7,9 +8,8 @@ import type {
 } from '../../../mcp-server/src/tools/types.js';
 
 export const CLASSIFICATION_VERSION = 'v5-operability-listing-issues';
-export const KNOWN_MODEL_ISSUES_VERSION = 'v1-categorized';
 export const ISSUE_ASSESSMENT_VERSION = 'v1-spain-mixed-cost';
-export const LISTING_ISSUE_EXTRACTION_VERSION = 'v1-explicit-defects';
+export const LISTING_ISSUE_EXTRACTION_VERSION = 'v4-explicit-present-defects';
 
 export interface ClassificationRunOptions {
   all: boolean;
@@ -49,6 +49,7 @@ export interface ClassificationSummary {
   assessmentCached: number;
   assessmentFailed: number;
   modelIssueAssessmentsEnabled: boolean;
+  listingIssueAssessmentsEnabled: boolean;
   listingIssuesDetected: number;
   listingAssessmentsSelected: number;
   listingAssessed: number;
@@ -58,10 +59,23 @@ export interface ClassificationSummary {
   version: string;
 }
 
+export interface ClassificationProgress {
+  current: number;
+  total: number;
+  externalId: string;
+  status: 'success' | 'warning' | 'failed' | 'stale';
+  assessmentFailures: number;
+  failureCodes: string[];
+}
+
 export interface ClassificationRepository {
   findCandidates(options: ClassificationRunOptions, version: string): Promise<ClassificationCandidate[]>;
-  findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean>;
-  findListingIssueExtraction(candidate: ClassificationCandidate, inputHash: string): Promise<{ issueCount: number } | null>;
+  findKnownModelIssues(candidate: ClassificationCandidate, analysisVersion: string): Promise<boolean>;
+  findListingIssueExtraction(
+    candidate: ClassificationCandidate,
+    inputHash: string,
+    analysisVersion: string,
+  ): Promise<{ issueCount: number } | null>;
   findIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<IssueAssessmentCandidate[]>;
   findListingIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<ListingIssueAssessmentCandidate[]>;
   saveIssueAssessment(options: {

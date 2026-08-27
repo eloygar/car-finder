@@ -81,10 +81,21 @@ and do not expire automatically.
 
 Live commands can incur Anthropic charges. Start with `make classify-one` and inspect the structured
 summary, including aggregate input/output token counts, before running `make classify-all`.
+When stderr is attached to a terminal, classification also prints a colored `[current/total]` progress
+line per listing and a final green/red summary. Set `NO_COLOR=1` to keep progress without ANSI colors,
+`CLASSIFY_PROGRESS=never` to suppress it, or `CLASSIFY_PROGRESS=always` to show it when output is piped.
+Assessment failures expose stable codes such as `mcp_repair_cost_evidence_insufficient` and
+`mcp_anthropic_invalid_request`; the MCP server log also includes Anthropic's request ID when available.
+Both web-backed tools aim to resolve their task with one focused search and use `max_uses: 3` as a hard
+per-call ceiling. They do not continue a `pause_turn`, because Anthropic applies `max_uses` per API request
+and a continuation could otherwise open a second search budget.
 
 ## Feature flags
 
 `ENABLE_MODEL_ISSUE_ASSESSMENTS=false` disables severity and repair-cost assessments for general
-model issues in both the classification pipeline and `pipeline:assess-issues`. Listing-specific issue
-assessments remain enabled. Set the flag to `true` to restore model-level assessments; the API exposes
-the current state so the UI only shows model-level pending evaluations while the feature is enabled.
+model issues in both the classification pipeline and `pipeline:assess-issues`.
+
+`ENABLE_LISTING_ISSUE_ASSESSMENTS=false` disables severity and repair-cost assessments for issues
+extracted from individual listings. Issue extraction remains enabled, but pending assessments no longer
+make a classified listing eligible for another pipeline run. Cached assessments remain stored and are
+hidden by the API and UI while the flag is disabled. Set either flag to `true` to restore that enrichment.

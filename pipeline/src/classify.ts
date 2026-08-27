@@ -9,6 +9,7 @@ import { createPrismaClient } from './db/client.js';
 import { PrismaClassificationRepository } from './classify/PrismaClassificationRepository.js';
 import { createClassifierSession } from './classify/createClassifierSession.js';
 import { runClassification } from './classify/runClassification.js';
+import { createClassificationTerminalReporter } from './classify/terminalReporter.js';
 import type { ClassificationRunOptions } from './classify/types.js';
 import {
   DEFAULT_KNOWN_ISSUES_WEB_MODEL,
@@ -16,7 +17,10 @@ import {
   DEFAULT_OPERATIONAL_STATUS_MODEL,
   DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL,
 } from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
-import { modelIssueAssessmentsEnabled } from '../../shared/src/featureFlags.js';
+import {
+  listingIssueAssessmentsEnabled,
+  modelIssueAssessmentsEnabled,
+} from '../../shared/src/featureFlags.js';
 
 export function parseClassificationArgs(args: readonly string[]): ClassificationRunOptions {
   let all = false;
@@ -71,6 +75,11 @@ export function parseClassificationArgs(args: readonly string[]): Classification
 
 async function main(): Promise<void> {
   const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
+  const progress = createClassificationTerminalReporter({
+    enabled: terminalProgressEnabled(),
+    colors: terminalColorsEnabled(),
+    write: (text) => process.stderr.write(text),
+  });
   let prisma: ReturnType<typeof createPrismaClient> | undefined;
   try {
     const run = parseClassificationArgs(process.argv.slice(2));
@@ -83,11 +92,16 @@ async function main(): Promise<void> {
     const issueAssessmentModel = process.env.ISSUE_ASSESSMENT_MODEL ?? DEFAULT_ISSUE_ASSESSMENT_MODEL;
     const listingIssueExtractionModel = process.env.LISTING_ISSUE_EXTRACTION_MODEL ?? DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL;
     prisma = createPrismaClient();
+    const listingAssessmentsEnabled = listingIssueAssessmentsEnabled();
     const summary = await runClassification({
       run,
-      repository: new PrismaClassificationRepository(prisma),
+      repository: new PrismaClassificationRepository(prisma, {
+        listingIssueAssessments: listingAssessmentsEnabled,
+      }),
       logger,
       modelIssueAssessmentsEnabled: modelIssueAssessmentsEnabled(),
+      listingIssueAssessmentsEnabled: listingAssessmentsEnabled,
+      onProgress: progress.onProgress,
       ...(!run.dryRun ? {
         createSession: () => createClassifierSession({ logger }),
       } : {}),
@@ -99,6 +113,7 @@ async function main(): Promise<void> {
       issueAssessmentModel: run.dryRun ? undefined : issueAssessmentModel,
       listingIssueExtractionModel: run.dryRun ? undefined : listingIssueExtractionModel,
     }, 'Classification run completed');
+    progress.complete(summary);
     if (summary.failed > 0 || summary.assessmentFailed > 0 || summary.listingAssessmentFailed > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof HelpRequested) {
@@ -106,10 +121,22 @@ async function main(): Promise<void> {
       return;
     }
     logger.error({ errorType: error instanceof Error ? error.name : typeof error }, 'Classification run failed');
+    progress.fatal(`La clasificación no pudo iniciarse: ${error instanceof Error ? error.message : 'error desconocido'}`);
     process.exitCode = 1;
   } finally {
     await prisma?.$disconnect();
   }
+}
+
+function terminalProgressEnabled(): boolean {
+  if (process.env.CLASSIFY_PROGRESS === 'never') return false;
+  return process.env.CLASSIFY_PROGRESS === 'always' || process.stderr.isTTY === true;
+}
+
+function terminalColorsEnabled(): boolean {
+  if (process.env.FORCE_COLOR !== undefined) return true;
+  if (process.env.NO_COLOR !== undefined) return false;
+  return process.stderr.isTTY === true;
 }
 
 function positiveInteger(value: string, option: string): number {

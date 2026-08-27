@@ -109,6 +109,7 @@ export function App() {
           </a>
           <nav className="app-nav">
             <a className="nav-link" href="/">Búsqueda</a>
+            <a className="nav-link" href="/buscar-anuncios">Recomendador</a>
             <a className="nav-link" href="/anuncios">Anuncios guardados</a>
           </nav>
         </div>

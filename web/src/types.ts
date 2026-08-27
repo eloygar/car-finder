@@ -147,6 +147,42 @@ export interface ListingIssueExtraction {
 
 export interface ListingsResponse {
   count: number;
-  features?: { modelIssueAssessments: boolean };
+  features?: { modelIssueAssessments: boolean; listingIssueAssessments: boolean };
   items: ListingRecord[];
+}
+
+export interface ClassifiedSearchOptions {
+  brands: Array<{
+    brand: string;
+    models: Array<{ id: string; model: string; taxonomyStatus: string }>;
+  }>;
+  locations: Array<{
+    id: 'vigo';
+    label: string;
+    latitude: number;
+    longitude: number;
+  }>;
+}
+
+export type RankingFactor =
+  | 'base'
+  | 'price'
+  | 'mileage'
+  | 'distance'
+  | 'listing_issues'
+  | 'model_issues';
+
+export interface ListingRanking {
+  score: number;
+  distanceKm: number | null;
+  version: string;
+  breakdown: Array<{ factor: RankingFactor; delta: number; reason: string }>;
+}
+
+export interface ClassifiedListingsSearchResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  features?: { listingIssueAssessments: boolean };
+  items: Array<{ listing: ListingRecord; ranking: ListingRanking }>;
 }

@@ -18,13 +18,27 @@ import {
   type LocalSearchResult,
 } from './localSearch/types.js';
 import { buildListingFacetWhere, type ListingFacetQuery } from './listingFilters.js';
-import { modelIssueAssessmentsEnabled } from '../../shared/src/featureFlags.js';
+import {
+  listingIssueAssessmentsEnabled,
+  modelIssueAssessmentsEnabled,
+} from '../../shared/src/featureFlags.js';
+import { KNOWN_MODEL_ISSUES_VERSION } from '../../shared/src/knownModelIssues.js';
 import { issueKey } from '../../shared/src/modelIssueAssessment.js';
+import { classifiedListingWhere } from './classifiedSearch/eligibility.js';
+import { scoreClassifiedListing } from './classifiedSearch/scoring.js';
+import {
+  classifiedListingSearchSchema,
+  VIGO_LOCATION,
+} from './classifiedSearch/types.js';
 
 export interface CreateAppOptions {
   executeSearch?: (request: LocalSearchRequest) => Promise<LocalSearchResult>;
   logger?: boolean;
   serveWeb?: boolean;
+  features?: {
+    modelIssueAssessments?: boolean;
+    listingIssueAssessments?: boolean;
+  };
 }
 
 export async function createApp(options: CreateAppOptions = {}): Promise<FastifyInstance> {
@@ -38,6 +52,10 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
     { client: sharedClient! },
   ));
   let searchInProgress = false;
+  const featureState = {
+    modelIssueAssessments: options.features?.modelIssueAssessments ?? modelIssueAssessmentsEnabled(),
+    listingIssueAssessments: options.features?.listingIssueAssessments ?? listingIssueAssessmentsEnabled(),
+  };
 
   await app.register(cors, {
     origin: /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
@@ -94,11 +112,14 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       }
       return reply.send({
         count,
-        features: { modelIssueAssessments: modelIssueAssessmentsEnabled() },
-        items: items.map((item) => withListingIssueExtraction(withIssueAssessments(
-          item,
-          item.knownModelIssues ? byVehicleModel.get(item.knownModelIssues.vehicleModelId) ?? [] : [],
-        ))),
+        features: featureState,
+        items: items.map((item) => withListingIssueExtraction(
+          withIssueAssessments(
+            item,
+            item.knownModelIssues ? byVehicleModel.get(item.knownModelIssues.vehicleModelId) ?? [] : [],
+          ),
+          featureState.listingIssueAssessments,
+        )),
       });
     } finally {
       await prisma.$disconnect();
@@ -128,6 +149,121 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
           brand: entry.brand,
           model: entry.model,
           count: entry._count._all,
+        })),
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  app.get('/api/classified-listings/search-options', async (_request, reply) => {
+    const prisma = createPrismaClient();
+    try {
+      const models = await prisma.vehicleModel.findMany({
+        where: { listings: { some: classifiedListingWhere() } },
+        select: { id: true, brand: true, model: true, taxonomyStatus: true },
+      });
+      models.sort((left, right) => left.brand.localeCompare(right.brand, 'es')
+        || left.model.localeCompare(right.model, 'es'));
+      const grouped = new Map<string, Array<{ id: string; model: string; taxonomyStatus: string }>>();
+      for (const model of models) {
+        const entries = grouped.get(model.brand) ?? [];
+        entries.push({ id: model.id, model: model.model, taxonomyStatus: model.taxonomyStatus });
+        grouped.set(model.brand, entries);
+      }
+      return reply.send({
+        brands: [...grouped].map(([brand, entries]) => ({ brand, models: entries })),
+        locations: [VIGO_LOCATION],
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+  app.post('/api/classified-listings/search', async (request, reply) => {
+    const parsed = classifiedListingSearchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: 'invalid_classified_search',
+        fields: parsed.error.flatten().fieldErrors,
+      });
+    }
+    const prisma = createPrismaClient();
+    try {
+      const vehicleModel = await prisma.vehicleModel.findUnique({
+        where: { id: parsed.data.vehicleModelId },
+        select: { id: true },
+      });
+      if (!vehicleModel) {
+        return reply.code(404).send({
+          error: 'vehicle_model_not_found',
+          message: 'El modelo seleccionado ya no está disponible.',
+        });
+      }
+      const listings = await prisma.listing.findMany({
+        where: classifiedListingWhere(vehicleModel.id),
+        include: {
+          knownModelIssues: true,
+          listingIssueExtraction: {
+            include: {
+              issues: {
+                include: { assessment: true },
+                orderBy: { createdAt: 'asc' },
+              },
+            },
+          },
+        },
+      });
+      const ranked = listings.map((listing) => ({
+        listing,
+        ranking: scoreClassifiedListing({
+          price: Number(listing.price),
+          mileage: listing.mileage,
+          latitude: listing.latitude,
+          longitude: listing.longitude,
+          listingIssueExtraction: listing.listingIssueExtraction,
+          knownModelIssues: listing.knownModelIssues,
+        }, parsed.data),
+      })).sort((left, right) => (
+        right.ranking.score - left.ranking.score
+        || nullableDistance(left.ranking.distanceKm) - nullableDistance(right.ranking.distanceKm)
+        || right.listing.lastSeenAt.getTime() - left.listing.lastSeenAt.getTime()
+        || left.listing.id.localeCompare(right.listing.id)
+      ));
+      const offset = (parsed.data.page - 1) * parsed.data.pageSize;
+      const page = ranked.slice(offset, offset + parsed.data.pageSize);
+      const vehicleModelIds = [...new Set(page.flatMap(({ listing }) =>
+        listing.knownModelIssues ? [listing.knownModelIssues.vehicleModelId] : []))];
+      const assessments = vehicleModelIds.length === 0 ? [] : await prisma.modelIssueAssessment.findMany({
+        where: { vehicleModelId: { in: vehicleModelIds } },
+        select: {
+          vehicleModelId: true, issueKey: true, severity: true,
+          estimatedCostMinEUR: true, estimatedCostMaxEUR: true,
+          reasoning: true, sources: true, pricingYear: true, assessedAt: true,
+        },
+      });
+      const byVehicleModel = new Map<string, typeof assessments>();
+      for (const assessment of assessments) {
+        const group = byVehicleModel.get(assessment.vehicleModelId) ?? [];
+        group.push(assessment);
+        byVehicleModel.set(assessment.vehicleModelId, group);
+      }
+      return reply.send({
+        total: ranked.length,
+        page: parsed.data.page,
+        pageSize: parsed.data.pageSize,
+        features: { listingIssueAssessments: featureState.listingIssueAssessments },
+        items: page.map(({ listing, ranking }) => ({
+          listing: withListingIssueExtraction(
+            withIssueAssessments(
+              listing,
+              listing.knownModelIssues
+                ? byVehicleModel.get(listing.knownModelIssues.vehicleModelId) ?? []
+                : [],
+            ),
+            featureState.listingIssueAssessments,
+          ),
+          ranking,
         })),
       });
     } finally {
@@ -212,6 +348,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
 function withIssueAssessments<T extends {
   knownModelIssues: null | {
     vehicleModelId: string;
+    analysisVersion: string;
     mechanical: string[];
     bodywork: string[];
     interior: string[];
@@ -229,6 +366,9 @@ function withIssueAssessments<T extends {
   assessedAt: Date;
 }>) {
   if (!item.knownModelIssues) return item;
+  if (item.knownModelIssues.analysisVersion !== KNOWN_MODEL_ISSUES_VERSION) {
+    return { ...item, knownModelIssues: null };
+  }
   const knownModelIssues = item.knownModelIssues;
   const cached = new Map(assessments.map((assessment) => [assessment.issueKey, assessment]));
   const categories = [
@@ -266,6 +406,10 @@ function publicAssessment(assessment: {
   return result;
 }
 
+function nullableDistance(distance: number | null): number {
+  return distance ?? Number.POSITIVE_INFINITY;
+}
+
 function withListingIssueExtraction<T extends {
   listingIssueExtraction: null | {
     extractedAt: Date;
@@ -284,7 +428,7 @@ function withListingIssueExtraction<T extends {
       };
     }>;
   };
-}>(item: T) {
+}>(item: T, assessmentsEnabled = true) {
   if (!item.listingIssueExtraction) return item;
   return {
     ...item,
@@ -294,7 +438,7 @@ function withListingIssueExtraction<T extends {
         category: issue.category,
         description: issue.description,
         evidence: issue.evidence,
-        assessment: issue.assessment,
+        assessment: assessmentsEnabled ? issue.assessment : null,
       })),
     },
   };

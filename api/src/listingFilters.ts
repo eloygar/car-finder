@@ -1,3 +1,5 @@
+import { KNOWN_MODEL_ISSUES_VERSION } from '../../shared/src/knownModelIssues.js';
+
 export interface ListingFacetQuery {
   status?: string;
   brand?: string;
@@ -24,10 +26,20 @@ export function buildListingFacetWhere(query: ListingFacetQuery): Record<string,
   }
   if (query.knownIssues === 'found' || query.knownIssues === 'none') {
     classificationConditions.push({
-      knownModelIssues: { is: { hasIssues: query.knownIssues === 'found' } },
+      knownModelIssues: {
+        is: {
+          hasIssues: query.knownIssues === 'found',
+          analysisVersion: KNOWN_MODEL_ISSUES_VERSION,
+        },
+      },
     });
   } else if (query.knownIssues === 'pending') {
-    classificationConditions.push({ knownModelIssuesId: null });
+    classificationConditions.push({
+      OR: [
+        { knownModelIssuesId: null },
+        { knownModelIssues: { is: { analysisVersion: { not: KNOWN_MODEL_ISSUES_VERSION } } } },
+      ],
+    });
   }
   if (classificationConditions.length > 0) where.AND = classificationConditions;
   return where;

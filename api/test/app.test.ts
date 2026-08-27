@@ -3,6 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 
 describe('local search API', () => {
+  it('rejects an invalid classified-listing search before opening the database', async () => {
+    const app = await createApp({ logger: false, serveWeb: false });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/classified-listings/search',
+      payload: {
+        vehicleModelId: 'not-a-uuid', priceTargetMax: 0, mileageTargetMax: -1, locationId: 'madrid',
+      },
+    });
+    await app.close();
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'invalid_classified_search' });
+  });
+
   it('serves the captured brand/model taxonomy and configured locations', async () => {
     const app = await createApp({ logger: false, serveWeb: false });
     const response = await app.inject({ method: 'GET', url: '/api/taxonomy' });

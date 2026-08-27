@@ -25,12 +25,14 @@ function fakeClient(updateCount = 1) {
       upsert: vi.fn().mockResolvedValue({ id: 'issues-1' }),
     },
     listingIssueExtraction: {
+      findFirst: vi.fn().mockResolvedValue(null),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn().mockResolvedValue({ id: 'extraction-1' }),
     },
   };
   const prisma = {
     listing,
+    listingIssueExtraction: tx.listingIssueExtraction,
     vehicleModel: { findUnique: vi.fn().mockResolvedValue({ id: 'vehicle-model-1' }) },
     knownModelIssues: { count: vi.fn().mockResolvedValue(0) },
     $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
@@ -41,7 +43,7 @@ function fakeClient(updateCount = 1) {
 describe('PrismaClassificationRepository', () => {
   it('selects pending rows in stable order and applies the limit', async () => {
     const { prisma, listing } = fakeClient();
-    const repository = new PrismaClassificationRepository(prisma);
+    const repository = new PrismaClassificationRepository(prisma, { listingIssueAssessments: true });
     const candidates = await repository.findCandidates(
       { all: false, dryRun: false, force: false, refreshKnownIssues: false, limit: 7 }, 'v4',
     );
@@ -53,6 +55,19 @@ describe('PrismaClassificationRepository', () => {
       take: 7,
     }));
     expect(candidates[0]?.price).toBe('12345.60');
+  });
+
+  it('does not select current listings solely for pending issue assessments when disabled', async () => {
+    const { prisma, listing } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
+    await repository.findCandidates(
+      { all: false, dryRun: false, force: false, refreshKnownIssues: false, limit: 7 }, 'v4',
+    );
+    expect(listing.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: 'active', OR: [
+        { classifiedAt: null }, { classificationVersion: null }, { classificationVersion: { not: 'v4' } },
+      ] },
+    }));
   });
 
   it('persists identity, categorized issues and listing atomically', async () => {
@@ -76,6 +91,22 @@ describe('PrismaClassificationRepository', () => {
       where: { id: 'db-1', contentHash: 'hash-1', status: 'active' },
       data: expect.objectContaining({ classification, vehicleModelId: 'vehicle-model-1', knownModelIssuesId: 'issues-1' }),
     }));
+  });
+
+  it('reuses an extraction only when both its input and analysis version match', async () => {
+    const { prisma, tx } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
+
+    await repository.findListingIssueExtraction(candidate, 'input-hash', 'v4-explicit-present-defects');
+
+    expect(tx.listingIssueExtraction.findFirst).toHaveBeenCalledWith({
+      where: {
+        listingId: candidate.id,
+        inputHash: 'input-hash',
+        analysisVersion: 'v4-explicit-present-defects',
+      },
+      select: { _count: { select: { issues: true } } },
+    });
   });
 
   it('rolls back stale optimistic updates', async () => {

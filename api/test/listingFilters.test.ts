@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { KNOWN_MODEL_ISSUES_VERSION } from '../../shared/src/knownModelIssues.js';
 import { buildListingFacetWhere } from '../src/listingFilters.js';
 
 describe('buildListingFacetWhere', () => {
@@ -15,9 +16,14 @@ describe('buildListingFacetWhere', () => {
   });
 
   it.each([
-    ['found', { knownModelIssues: { is: { hasIssues: true } } }],
-    ['none', { knownModelIssues: { is: { hasIssues: false } } }],
-    ['pending', { knownModelIssuesId: null }],
+    ['found', { knownModelIssues: { is: { hasIssues: true, analysisVersion: KNOWN_MODEL_ISSUES_VERSION } } }],
+    ['none', { knownModelIssues: { is: { hasIssues: false, analysisVersion: KNOWN_MODEL_ISSUES_VERSION } } }],
+    ['pending', {
+      OR: [
+        { knownModelIssuesId: null },
+        { knownModelIssues: { is: { analysisVersion: { not: KNOWN_MODEL_ISSUES_VERSION } } } },
+      ],
+    }],
   ] as const)('maps the %s known-issues filter', (knownIssues, condition) => {
     expect(buildListingFacetWhere({ knownIssues })).toEqual({
       AND: [condition],
@@ -33,7 +39,7 @@ describe('buildListingFacetWhere', () => {
       status: 'active', brand: 'Toyota', classifiedAt: { not: null },
       AND: [
         { OR: expect.any(Array) },
-        { knownModelIssues: { is: { hasIssues: true } } },
+        { knownModelIssues: { is: { hasIssues: true, analysisVersion: KNOWN_MODEL_ISSUES_VERSION } } },
       ],
     });
   });

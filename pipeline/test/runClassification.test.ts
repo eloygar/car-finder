@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { runClassification } from '../src/classify/runClassification.js';
 import type { ClassificationCandidate, ClassificationRepository, ListingClassifier } from '../src/classify/types.js';
 import { ClassificationAttemptError } from '../src/classify/types.js';
+import { KNOWN_MODEL_ISSUES_VERSION } from '../../shared/src/knownModelIssues.js';
 
 const candidate: ClassificationCandidate = {
   id: 'db-1', externalId: 'wallapop-1', contentHash: 'hash', title: 'Car', description: null,
@@ -62,15 +63,21 @@ describe('runClassification', () => {
   it('researches a cache miss and persists operability plus relational issues', async () => {
     const repo = repository();
     const service = classifier();
+    const onProgress = vi.fn();
     const summary = await runClassification({
       run, repository: repo, logger, now: () => new Date('2026-08-25T12:00:00Z'),
+      onProgress,
       createSession: async () => ({ classifier: service, close: vi.fn() }),
     });
     expect(summary).toMatchObject({ classified: 1, inputTokens: 30, outputTokens: 6 });
     expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
       candidate, classification: { operability }, version: 'v5-operability-listing-issues',
-      researchedIssues: { analysis, anthropicModel: 'claude-haiku', analysisVersion: 'v1-categorized' },
+      researchedIssues: { analysis, anthropicModel: 'claude-haiku', analysisVersion: KNOWN_MODEL_ISSUES_VERSION },
     }));
+    expect(onProgress).toHaveBeenCalledWith({
+      current: 1, total: 1, externalId: candidate.externalId,
+      status: 'success', assessmentFailures: 0, failureCodes: [],
+    });
   });
 
   it('reuses cached issues and skips research for non-operational or yearless cars', async () => {
@@ -121,7 +128,9 @@ describe('runClassification', () => {
       new ClassificationAttemptError('provider failed', 9, 4, 'anthropic_http_503'),
     );
     const summary = await runClassification({
-      run, repository: repo, logger, modelIssueAssessmentsEnabled: true,
+      run, repository: repo, logger,
+      modelIssueAssessmentsEnabled: true,
+      listingIssueAssessmentsEnabled: true,
       createSession: async () => ({ classifier: service, close: vi.fn() }),
     });
     expect(summary).toMatchObject({ failed: 1, classified: 0, inputTokens: 19, outputTokens: 6 });
@@ -147,7 +156,9 @@ describe('runClassification', () => {
       .mockRejectedValueOnce(new ClassificationAttemptError('failed', 2, 1, 'mcp_issue_assessment_failed'));
 
     const summary = await runClassification({
-      run, repository: repo, logger, modelIssueAssessmentsEnabled: true,
+      run, repository: repo, logger,
+      modelIssueAssessmentsEnabled: true,
+      listingIssueAssessmentsEnabled: true,
       createSession: async () => ({ classifier: service, close: vi.fn() }),
     });
 
@@ -185,16 +196,23 @@ describe('runClassification', () => {
     });
 
     const summary = await runClassification({
-      run, repository: repo, logger, modelIssueAssessmentsEnabled: true,
+      run, repository: repo, logger,
+      modelIssueAssessmentsEnabled: true,
+      listingIssueAssessmentsEnabled: true,
       createSession: async () => ({ classifier: service, close: vi.fn() }),
     });
 
     expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
       listingExtraction: expect.objectContaining({
-        analysisVersion: 'v1-explicit-defects',
+        analysisVersion: 'v4-explicit-present-defects',
         issues: expect.objectContaining({ mechanical: [expect.objectContaining({ description: 'Pierde aceite.' })] }),
       }),
     }));
+    expect(repo.findListingIssueExtraction).toHaveBeenCalledWith(
+      described,
+      expect.any(String),
+      'v4-explicit-present-defects',
+    );
     expect(summary).toMatchObject({
       listingIssuesDetected: 1, listingAssessmentsSelected: 1, listingAssessed: 1,
       assessmentsSelected: 1, assessed: 1,
@@ -276,7 +294,7 @@ describe('runClassification', () => {
     expect(service.assessIssueSeverityAndCost).not.toHaveBeenCalled();
   });
 
-  it('skips model issue assessments by default while retaining listing-specific assessments', async () => {
+  it('skips both issue assessment types by default', async () => {
     const repo = repository(true);
     vi.mocked(repo.findListingIssueAssessmentCandidates).mockResolvedValue([{
       detectedIssueId: 'detected-1', brand: 'Toyota', model: 'Corolla', year: 2020,
@@ -293,10 +311,29 @@ describe('runClassification', () => {
     });
     expect(summary).toMatchObject({
       modelIssueAssessmentsEnabled: false,
-      listingAssessmentsSelected: 1, listingAssessed: 1, assessmentsSelected: 0, assessed: 0,
+      listingIssueAssessmentsEnabled: false,
+      listingAssessmentsSelected: 0, listingAssessed: 0, assessmentsSelected: 0, assessed: 0,
     });
+    expect(repo.findListingIssueAssessmentCandidates).not.toHaveBeenCalled();
     expect(repo.findIssueAssessmentCandidates).not.toHaveBeenCalled();
+    expect(service.assessIssueSeverityAndCost).not.toHaveBeenCalled();
+  });
+
+  it('can enable listing-specific assessments without enabling model assessments', async () => {
+    const repo = repository(true);
+    vi.mocked(repo.findListingIssueAssessmentCandidates).mockResolvedValue([{
+      detectedIssueId: 'detected-1', brand: 'Toyota', model: 'Corolla', year: 2020,
+      issue: 'Pierde aceite.', issueKey: 'listing-key', evidence: ['pierde aceite'], cached: false,
+    }]);
+    const service = classifier();
+    const summary = await runClassification({
+      run, repository: repo, logger, listingIssueAssessmentsEnabled: true,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+    expect(summary).toMatchObject({
+      modelIssueAssessmentsEnabled: false, listingIssueAssessmentsEnabled: true,
+      listingAssessmentsSelected: 1, listingAssessed: 1, assessmentsSelected: 0,
+    });
     expect(service.assessIssueSeverityAndCost).toHaveBeenCalledOnce();
-    expect(service.assessIssueSeverityAndCost).toHaveBeenCalledWith(expect.objectContaining({ issueKey: 'listing-key' }));
   });
 });

@@ -88,7 +88,10 @@ export function createMcpServer({
         return toolSuccess(await analysisService.assessIssueSeverityAndCost(query));
       } catch (error) {
         logToolFailure(logger, 'assess_issue_severity_and_cost', error);
-        return toolFailure('issue_assessment_failed', 'Issue severity and repair cost could not be assessed.');
+        return toolFailure(
+          analysisFailureCode(error, 'issue_assessment_failed'),
+          'Issue severity and repair cost could not be assessed.',
+        );
       }
     },
   );
@@ -107,7 +110,10 @@ export function createMcpServer({
         return toolSuccess(await analysisService.checkKnownIssuesWeb(query));
       } catch (error) {
         logToolFailure(logger, 'check_known_issues_web', error);
-        return toolFailure('known_issues_web_failed', 'Known vehicle issues could not be researched.');
+        return toolFailure(
+          analysisFailureCode(error, 'known_issues_web_failed'),
+          'Known vehicle issues could not be researched.',
+        );
       }
     },
   );
@@ -216,11 +222,14 @@ function providerErrorDetails(error: unknown): Record<string, unknown> {
     ? Reflect.get(providerEnvelope, 'error')
     : undefined;
   return {
-    ...(error instanceof SyntaxError
+    ...(error instanceof Error && safeLocalErrorMessage(error)
       ? { localMessage: error.message.slice(0, 500) }
       : {}),
     ...(typeof Reflect.get(error, 'status') === 'number' ? { providerStatus: Reflect.get(error, 'status') } : {}),
     ...(typeof Reflect.get(error, 'code') === 'string' ? { providerCode: Reflect.get(error, 'code') } : {}),
+    ...(typeof Reflect.get(error, 'requestID') === 'string'
+      ? { providerRequestId: Reflect.get(error, 'requestID') }
+      : {}),
     ...(typeof providerError === 'object' && providerError !== null
       ? {
           ...(typeof Reflect.get(providerError, 'type') === 'string'
@@ -232,4 +241,30 @@ function providerErrorDetails(error: unknown): Record<string, unknown> {
         }
       : {}),
   };
+}
+
+function safeLocalErrorMessage(error: Error): boolean {
+  return error instanceof SyntaxError || analysisFailureCode(error, '') !== '' || [
+    'Anthropic web search did not complete',
+    'Anthropic issue assessment web search did not complete',
+    'Repair cost assessment requires web search evidence',
+    'Issue assessment response was not an object',
+    'Repair cost evidence was insufficient',
+    'Extracted issue evidence is not a literal excerpt of the listing text',
+  ].includes(error.message);
+}
+
+function analysisFailureCode(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null) return fallback;
+  const localCode = Reflect.get(error, 'code');
+  if (typeof localCode === 'string' && /^(?:repair_cost|issue_assessment|web_search)_/u.test(localCode)) {
+    return localCode;
+  }
+  const status = Reflect.get(error, 'status');
+  if (status === 400) return 'anthropic_invalid_request';
+  if (status === 401 || status === 403) return 'anthropic_auth_error';
+  if (status === 429) return 'anthropic_rate_limited';
+  if (typeof status === 'number' && status >= 500) return 'anthropic_unavailable';
+  if (error instanceof SyntaxError || error.constructor.name === 'ZodError') return 'issue_assessment_invalid_output';
+  return fallback;
 }

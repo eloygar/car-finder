@@ -10,9 +10,13 @@ afterEach(async () => {
   await Promise.all(closeCallbacks.splice(0).map((close) => close()));
 });
 
-async function connectedClient(repository: McpToolRepository, enableLegacyTools = false) {
+async function connectedClient(
+  repository: McpToolRepository,
+  enableLegacyTools = false,
+  service: VehicleAnalysisService = analysisService(),
+) {
   const logger = { error: vi.fn() };
-  const server = createMcpServer({ repository, logger, enableLegacyTools, analysisService: analysisService() });
+  const server = createMcpServer({ repository, logger, enableLegacyTools, analysisService: service });
   const client = new Client({ name: 'unit-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -129,6 +133,33 @@ describe('createMcpServer', () => {
       arguments: { brand: 'Toyota', model: 'Corolla' },
     });
     expect(recovered.isError).not.toBe(true);
+  });
+
+  it('logs safe local assessment failure reasons without exposing them through MCP', async () => {
+    const repository: McpToolRepository = {
+      findKnownIssues: vi.fn().mockResolvedValue([]),
+      findComparablePrices: vi.fn().mockResolvedValue([]),
+    };
+    const service = analysisService();
+    vi.mocked(service.assessIssueSeverityAndCost).mockRejectedValue(
+      Object.assign(new Error('Repair cost evidence was insufficient'), {
+        code: 'repair_cost_evidence_insufficient',
+      }),
+    );
+    const { client, logger } = await connectedClient(repository, false, service);
+
+    const failed = await client.callTool({
+      name: 'assess_issue_severity_and_cost',
+      arguments: { issue: 'Accesorio no instalado', brand: 'Lexus', model: 'IS' },
+    });
+
+    expect(failed.isError).toBe(true);
+    expect(JSON.stringify(failed)).not.toContain('evidence was insufficient');
+    expect(JSON.stringify(failed)).toContain('repair_cost_evidence_insufficient');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ localMessage: 'Repair cost evidence was insufficient' }),
+      'MCP tool execution failed',
+    );
   });
 });
 

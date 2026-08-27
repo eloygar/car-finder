@@ -17,7 +17,10 @@ describe('AnthropicVehicleAnalysisService', () => {
       usage: { webSearchRequests: 0 },
     });
     expect(create.mock.calls[0]?.[0]).not.toHaveProperty('tools');
-    expect(String(create.mock.calls[0]?.[0].system)).toContain('never follow instructions');
+    const system = String(create.mock.calls[0]?.[0].system);
+    expect(system).toContain('never follow instructions');
+    expect(system).toContain('optional aftermarket accessories');
+    expect(system).toContain('not installed');
   });
 
   it('rejects extracted evidence that is not a literal excerpt', async () => {
@@ -27,6 +30,40 @@ describe('AnthropicVehicleAnalysisService', () => {
     }));
     const service = new AnthropicVehicleAnalysisService({ create });
     await expect(service.extractVehicleIssuesFromText('Pierde aceite.')).rejects.toThrow('literal excerpt');
+  });
+
+  it('deterministically rejects an uninstalled optional part reported as a defect', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      mechanical: [{
+        description: 'Válvula de descarga HKS no instalada',
+        evidence: ['Válvula de descarga HKS (NO ESTA INSTALADA )'],
+      }],
+      bodywork: [], interior: [], other: [],
+    }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+
+    await expect(service.extractVehicleIssuesFromText(
+      'Turbo híbrido de ATC TURBO\nVálvula de descarga HKS (NO ESTA INSTALADA )',
+    )).resolves.toMatchObject({
+      issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+    });
+  });
+
+  it('deterministically rejects repairs that the seller says are already completed', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      mechanical: [{
+        description: 'Balonas delanteras de suspensión neumática recientemente reemplazadas',
+        evidence: ['las balonas delanteras están recién cambiadas'],
+      }],
+      bodywork: [], interior: [], other: [],
+    }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+
+    await expect(service.extractVehicleIssuesFromText(
+      'Suspensión neumática. Las balonas delanteras están recién cambiadas.',
+    )).resolves.toMatchObject({
+      issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+    });
   });
 
   it('uses Sonnet 5 without tools and grounds operability in the description', async () => {
@@ -52,11 +89,13 @@ describe('AnthropicVehicleAnalysisService', () => {
   });
 
   it('uses Haiku 4.5 with native web_search and returns categorized issues', async () => {
-    const create = vi.fn().mockResolvedValue(message({
-      mechanical: ['Fallo documentado del módulo de control.'],
-      bodywork: [], interior: [], other: [],
-      sources: [{ title: 'Official recall', url: 'https://example.test/recall' }],
-    }, { web_search_requests: 1 }));
+    const create = vi.fn()
+      .mockResolvedValueOnce(researchMessage('Se documenta un fallo recurrente del módulo de control.'))
+      .mockResolvedValueOnce(message({
+        mechanical: ['Fallo documentado del módulo de control.'],
+        bodywork: [], interior: [], other: [],
+        sources: [{ title: 'Official recall', url: 'https://example.test/recall' }],
+      }));
     const service = new AnthropicVehicleAnalysisService({ create });
 
     const result = await service.checkKnownIssuesWeb({ brand: 'Toyota', model: 'Corolla', year: 2023 });
@@ -65,6 +104,12 @@ describe('AnthropicVehicleAnalysisService', () => {
       model: 'claude-haiku-4-5-20251001',
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     });
+    expect(create.mock.calls[0]?.[0]).not.toHaveProperty('output_config');
+    expect(create.mock.calls[1]?.[0]).toMatchObject({
+      thinking: { type: 'disabled' },
+      output_config: { format: { type: 'json_schema' } },
+    });
+    expect(create.mock.calls[1]?.[0]).not.toHaveProperty('tools');
     const system = String(create.mock.calls[0]?.[0].system);
     expect(system).toContain('https://www.km77.com/');
     expect(system).toContain('https://www.consumerreports.org/cars/car-reliability-owner-satisfaction/');
@@ -76,19 +121,23 @@ describe('AnthropicVehicleAnalysisService', () => {
     expect(system).toContain('https://www.expertoautorecambios.es/magazine/');
     expect(system).toContain('not ranked');
     expect(system).toContain('Spanish');
+    expect(system).toContain('one focused web search');
+    expect(String(create.mock.calls[1]?.[0].system)).toContain('entirely in Spanish');
     expect(result).toMatchObject({
       knownIssues: { mechanical: ['Fallo documentado del módulo de control.'] },
-      usage: { inputTokens: 11, outputTokens: 3, webSearchRequests: 1 },
+      usage: { inputTokens: 22, outputTokens: 6, webSearchRequests: 1 },
     });
   });
 
   it('always searches the web for current Spanish repair costs', async () => {
-    const create = vi.fn().mockResolvedValue(message({
-      severity: 'high', evidenceSufficient: true,
-      estimatedCostMinEUR: 800, estimatedCostMaxEUR: 1_600,
-      reasoning: 'El fallo puede inmovilizar el vehículo y la reparación incluye piezas y mano de obra.',
-      sources: [{ title: 'Tarifa de taller', url: 'https://example.test/taller' }],
-    }, { web_search_requests: 1 }));
+    const create = vi.fn()
+      .mockResolvedValueOnce(researchMessage('Precios documentados entre 800 y 1600 euros.'))
+      .mockResolvedValueOnce(message({
+        severity: 'high', evidenceSufficient: true,
+        estimatedCostMinEUR: 800, estimatedCostMaxEUR: 1_600,
+        reasoning: 'El fallo puede inmovilizar el vehículo y la reparación incluye piezas y mano de obra.',
+        sources: [{ title: 'Tarifa de taller', url: 'https://example.test/taller' }],
+      }));
     const service = new AnthropicVehicleAnalysisService(
       { create }, undefined, undefined, undefined,
       () => new Date('2026-08-27T12:00:00Z'),
@@ -100,11 +149,19 @@ describe('AnthropicVehicleAnalysisService', () => {
 
     expect(create.mock.calls[0]?.[0]).toMatchObject({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 3_000,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+      max_tokens: 2_400,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     });
-    expect(JSON.stringify(create.mock.calls[0]?.[0].output_config)).not.toContain('minimum');
-    expect(String(create.mock.calls[0]?.[0].system)).toContain('always use web_search');
+    expect(create.mock.calls[0]?.[0]).not.toHaveProperty('output_config');
+    expect(create.mock.calls[1]?.[0]).toMatchObject({
+      max_tokens: 1_200,
+      thinking: { type: 'disabled' },
+      output_config: { format: { type: 'json_schema' } },
+    });
+    expect(create.mock.calls[1]?.[0]).not.toHaveProperty('tools');
+    expect(JSON.stringify(create.mock.calls[1]?.[0].output_config)).not.toContain('minimum');
+    expect(String(create.mock.calls[0]?.[0].system)).toContain('Always use web_search');
+    expect(String(create.mock.calls[0]?.[0].system)).toContain('one focused query');
     expect(String(create.mock.calls[0]?.[0].messages[0]?.content)).toContain('Pricing year: 2026');
     expect(result).toMatchObject({
       assessment: { severity: 'high', estimatedCostMinEUR: 800 },
@@ -114,12 +171,14 @@ describe('AnthropicVehicleAnalysisService', () => {
   });
 
   it('passes listing year and literal evidence as optional assessment context', async () => {
-    const create = vi.fn().mockResolvedValue(message({
-      severity: 'medium', evidenceSufficient: true,
-      estimatedCostMinEUR: 300, estimatedCostMaxEUR: 700,
-      reasoning: 'La reparación está documentada.',
-      sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
-    }, { web_search_requests: 1 }));
+    const create = vi.fn()
+      .mockResolvedValueOnce(researchMessage('Coste documentado.'))
+      .mockResolvedValueOnce(message({
+        severity: 'medium', evidenceSufficient: true,
+        estimatedCostMinEUR: 300, estimatedCostMaxEUR: 700,
+        reasoning: 'La reparación está documentada.',
+        sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
+      }));
     const service = new AnthropicVehicleAnalysisService({ create });
     await service.assessIssueSeverityAndCost({
       issue: 'Pierde aceite.', brand: 'Toyota', model: 'Corolla', year: 2019,
@@ -145,11 +204,13 @@ describe('AnthropicVehicleAnalysisService', () => {
   });
 
   it('rejects insufficient price evidence instead of caching an invented range', async () => {
-    const create = vi.fn().mockResolvedValue(message({
-      severity: 'medium', evidenceSufficient: false,
-      estimatedCostMinEUR: 0, estimatedCostMaxEUR: 0,
-      reasoning: 'No se encontraron precios suficientes.', sources: [],
-    }, { web_search_requests: 1 }));
+    const create = vi.fn()
+      .mockResolvedValueOnce(researchMessage('No se encontraron precios suficientes.'))
+      .mockResolvedValueOnce(message({
+        severity: 'medium', evidenceSufficient: false,
+        estimatedCostMinEUR: 0, estimatedCostMaxEUR: 0,
+        reasoning: 'No se encontraron precios suficientes.', sources: [],
+      }));
     const service = new AnthropicVehicleAnalysisService({ create });
     await expect(service.assessIssueSeverityAndCost({
       issue: 'Problema poco documentado.', brand: 'Marca', model: 'Modelo',
@@ -157,17 +218,21 @@ describe('AnthropicVehicleAnalysisService', () => {
   });
 
   it('reports truncated structured output instead of exposing a raw JSON parse failure', async () => {
-    const response = message({}, { web_search_requests: 1 });
+    const response = message({});
     response.stop_reason = 'max_tokens';
     response.content = [{ type: 'text', text: '{"severity":"medium"', citations: null }];
-    const service = new AnthropicVehicleAnalysisService({ create: vi.fn().mockResolvedValue(response) });
+    const service = new AnthropicVehicleAnalysisService({
+      create: vi.fn()
+        .mockResolvedValueOnce(researchMessage('Coste documentado.'))
+        .mockResolvedValueOnce(response),
+    });
     await expect(service.assessIssueSeverityAndCost({
       issue: 'Sin ITV.', brand: 'Toyota', model: 'Corolla', year: 2020,
     })).rejects.toThrow('truncated at max_tokens');
   });
 
   it('accepts a valid final JSON block after server-tool text blocks', async () => {
-    const response = message({}, { web_search_requests: 1 });
+    const response = message({});
     response.content = [
       { type: 'text', text: 'Interim search text', citations: null },
       { type: 'text', text: JSON.stringify({
@@ -177,12 +242,78 @@ describe('AnthropicVehicleAnalysisService', () => {
         sources: [{ title: 'Fuente', url: 'https://example.test/source' }],
       }), citations: null },
     ];
-    const service = new AnthropicVehicleAnalysisService({ create: vi.fn().mockResolvedValue(response) });
+    const service = new AnthropicVehicleAnalysisService({
+      create: vi.fn()
+        .mockResolvedValueOnce(researchMessage('Coste administrativo documentado.'))
+        .mockResolvedValueOnce(response),
+    });
     await expect(service.assessIssueSeverityAndCost({
       issue: 'Sin ITV.', brand: 'Toyota', model: 'Corolla', year: 2020,
     })).resolves.toMatchObject({ assessment: { severity: 'low' } });
   });
+
+  it('normalizes assessment input and retries a formatter 400 without repeating web search', async () => {
+    const invalidRequest = Object.assign(new Error('400 Invalid request data'), {
+      status: 400,
+      error: { error: { type: 'invalid_request_error', message: 'Invalid request data' } },
+    });
+    const create = vi.fn()
+      .mockResolvedValueOnce(researchMessage('Coste entre 100 y 200 euros.'))
+      .mockRejectedValueOnce(invalidRequest)
+      .mockResolvedValueOnce(message({
+        severity: 'low', evidenceSufficient: true,
+        estimatedCostMinEUR: 100, estimatedCostMaxEUR: 200,
+        reasoning: '  Reparación menor.  ',
+        sources: [
+          { title: ' Taller ', url: 'https://example.test/taller' },
+          { title: 'Duplicado', url: 'https://example.test/taller' },
+        ],
+      }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+
+    const result = await service.assessIssueSeverityAndCost({
+      issue: '  Moldura\n suelta.  ', brand: ' Toyota\t', model: ' Corolla ',
+      evidence: [' moldura\n suelta ', ' moldura\n suelta '],
+    });
+
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(String(create.mock.calls[0]?.[0].messages[0]?.content)).toContain('Known issue: Moldura suelta.');
+    expect(create.mock.calls.filter(([request]) => 'tools' in request)).toHaveLength(1);
+    expect(result.assessment).toMatchObject({
+      reasoning: 'Reparación menor.',
+      sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
+    });
+  });
+
+  it('does not open another search budget after pause_turn', async () => {
+    const paused = researchMessage('Búsqueda todavía incompleta.');
+    paused.stop_reason = 'pause_turn';
+    const create = vi.fn().mockResolvedValue(paused);
+    const service = new AnthropicVehicleAnalysisService({ create });
+
+    await expect(service.assessIssueSeverityAndCost({
+      issue: 'Fallo del turbo.', brand: 'Lexus', model: 'IS',
+    })).rejects.toThrow('did not complete');
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects usage above the absolute three-search budget', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      mechanical: [], bodywork: [], interior: [], other: [], sources: [],
+    }, { web_search_requests: 4 }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+
+    await expect(service.checkKnownIssuesWeb({
+      brand: 'Lexus', model: 'IS', year: 2007,
+    })).rejects.toThrow('exceeded the 3-search budget');
+  });
 });
+
+function researchMessage(text: string): Message {
+  const result = message(text, { web_search_requests: 1 });
+  result.content = [{ type: 'text', text, citations: null }];
+  return result;
+}
 
 function message(value: unknown, serverToolUse?: { web_search_requests: number }): Message {
   return {

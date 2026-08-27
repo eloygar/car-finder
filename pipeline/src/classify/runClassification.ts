@@ -1,6 +1,7 @@
 import type { BatchLogger } from '../search.js';
 import type {
   ClassificationRepository,
+  ClassificationProgress,
   ClassificationRunOptions,
   ClassificationSummary,
   ClassifierSession,
@@ -22,6 +23,8 @@ export async function runClassification(options: {
   logger: BatchLogger;
   now?: () => Date;
   modelIssueAssessmentsEnabled?: boolean;
+  listingIssueAssessmentsEnabled?: boolean;
+  onProgress?: (progress: ClassificationProgress) => void;
 }): Promise<ClassificationSummary> {
   const candidates = await options.repository.findCandidates(options.run, CLASSIFICATION_VERSION);
   const summary: ClassificationSummary = {
@@ -36,6 +39,7 @@ export async function runClassification(options: {
     assessmentCached: 0,
     assessmentFailed: 0,
     modelIssueAssessmentsEnabled: options.modelIssueAssessmentsEnabled ?? false,
+    listingIssueAssessmentsEnabled: options.listingIssueAssessmentsEnabled ?? false,
     listingIssuesDetected: 0,
     listingAssessmentsSelected: 0,
     listingAssessed: 0,
@@ -50,8 +54,13 @@ export async function runClassification(options: {
   const session = await options.createSession();
   const refreshedModelYears = new Set<string>();
   const visitedAssessments = new Set<string>();
+  let processed = 0;
   try {
     for (const candidate of candidates) {
+      const failureCodes: string[] = [];
+      const failuresBefore = summary.failed;
+      const staleBefore = summary.stale;
+      const assessmentFailuresBefore = summary.assessmentFailed + summary.listingAssessmentFailed;
       try {
         const result = await session.classifier.classifyOperability(candidate);
         summary.inputTokens += result.inputTokens;
@@ -74,7 +83,11 @@ export async function runClassification(options: {
           model: candidate.model,
           year: candidate.year,
         });
-        const cachedExtraction = await options.repository.findListingIssueExtraction(candidate, extractionHash);
+        const cachedExtraction = await options.repository.findListingIssueExtraction(
+          candidate,
+          extractionHash,
+          LISTING_ISSUE_EXTRACTION_VERSION,
+        );
         let listingExtraction;
         if (cachedExtraction) {
           summary.listingIssuesDetected += cachedExtraction.issueCount;
@@ -101,7 +114,10 @@ export async function runClassification(options: {
         if (candidate.year !== null) {
           const cacheKey = modelYearKey(candidate.brand, candidate.model, candidate.year);
           const alreadyRefreshed = refreshedModelYears.has(cacheKey);
-          const cached = alreadyRefreshed || await options.repository.findKnownModelIssues(candidate);
+          const cached = alreadyRefreshed || await options.repository.findKnownModelIssues(
+            candidate,
+            KNOWN_MODEL_ISSUES_VERSION,
+          );
           if (!cached || (options.run.refreshKnownIssues && !alreadyRefreshed)) {
             const research = await session.classifier.researchKnownIssues(candidate);
             summary.inputTokens += research.inputTokens;
@@ -126,49 +142,54 @@ export async function runClassification(options: {
           if (researchedIssues && candidate.year !== null) {
             refreshedModelYears.add(modelYearKey(candidate.brand, candidate.model, candidate.year));
           }
-          let listingIssueCandidates: ListingIssueAssessmentCandidate[] = [];
-          try {
-            listingIssueCandidates = await options.repository.findListingIssueAssessmentCandidates(candidate);
-          } catch (error) {
-            summary.listingAssessmentFailed += 1;
-            options.logger.error({
-              externalId: candidate.externalId,
-              errorType: error instanceof Error ? error.name : typeof error,
-            }, 'Listing issue assessment candidates could not be loaded');
-          }
-          for (const assessmentCandidate of listingIssueCandidates) {
-            summary.listingAssessmentsSelected += 1;
-            if (assessmentCandidate.cached) {
-              summary.listingAssessmentCached += 1;
-              continue;
-            }
+          if (options.listingIssueAssessmentsEnabled) {
+            let listingIssueCandidates: ListingIssueAssessmentCandidate[] = [];
             try {
-              const assessment = await session.classifier.assessIssueSeverityAndCost(assessmentCandidate);
-              summary.inputTokens += assessment.inputTokens;
-              summary.outputTokens += assessment.outputTokens;
-              await options.repository.saveListingIssueAssessment({
-                candidate: assessmentCandidate,
-                assessment: assessment.assessment,
-                pricingYear: assessment.pricingYear,
-                anthropicModel: assessment.anthropicModel,
-                analysisVersion: ISSUE_ASSESSMENT_VERSION,
-                assessedAt: options.now?.() ?? new Date(),
-              });
-              summary.listingAssessed += 1;
+              listingIssueCandidates = await options.repository.findListingIssueAssessmentCandidates(candidate);
             } catch (error) {
-              if (error instanceof ClassificationAttemptError) {
-                summary.inputTokens += error.inputTokens;
-                summary.outputTokens += error.outputTokens;
-              }
               summary.listingAssessmentFailed += 1;
+              failureCodes.push('listing_assessment_candidates_failed');
               options.logger.error({
                 externalId: candidate.externalId,
-                issueKey: assessmentCandidate.issueKey,
                 errorType: error instanceof Error ? error.name : typeof error,
-                failureCode: error instanceof ClassificationAttemptError
+              }, 'Listing issue assessment candidates could not be loaded');
+            }
+            for (const assessmentCandidate of listingIssueCandidates) {
+              summary.listingAssessmentsSelected += 1;
+              if (assessmentCandidate.cached) {
+                summary.listingAssessmentCached += 1;
+                continue;
+              }
+              try {
+                const assessment = await session.classifier.assessIssueSeverityAndCost(assessmentCandidate);
+                summary.inputTokens += assessment.inputTokens;
+                summary.outputTokens += assessment.outputTokens;
+                await options.repository.saveListingIssueAssessment({
+                  candidate: assessmentCandidate,
+                  assessment: assessment.assessment,
+                  pricingYear: assessment.pricingYear,
+                  anthropicModel: assessment.anthropicModel,
+                  analysisVersion: ISSUE_ASSESSMENT_VERSION,
+                  assessedAt: options.now?.() ?? new Date(),
+                });
+                summary.listingAssessed += 1;
+              } catch (error) {
+                if (error instanceof ClassificationAttemptError) {
+                  summary.inputTokens += error.inputTokens;
+                  summary.outputTokens += error.outputTokens;
+                }
+                summary.listingAssessmentFailed += 1;
+                const failureCode = error instanceof ClassificationAttemptError
                   ? error.failureCode
-                  : 'unexpected_error',
-              }, 'Listing issue assessment failed');
+                  : 'unexpected_error';
+                failureCodes.push(failureCode);
+                options.logger.error({
+                  externalId: candidate.externalId,
+                  issueKey: assessmentCandidate.issueKey,
+                  errorType: error instanceof Error ? error.name : typeof error,
+                  failureCode,
+                }, 'Listing issue assessment failed');
+              }
             }
           }
           if (!options.modelIssueAssessmentsEnabled) continue;
@@ -177,6 +198,7 @@ export async function runClassification(options: {
             issueCandidates = await options.repository.findIssueAssessmentCandidates(candidate);
           } catch (error) {
             summary.assessmentFailed += 1;
+            failureCodes.push('known_assessment_candidates_failed');
             options.logger.error({
               externalId: candidate.externalId,
               errorType: error instanceof Error ? error.name : typeof error,
@@ -211,13 +233,15 @@ export async function runClassification(options: {
                 summary.outputTokens += error.outputTokens;
               }
               summary.assessmentFailed += 1;
+              const failureCode = error instanceof ClassificationAttemptError
+                ? error.failureCode
+                : 'unexpected_error';
+              failureCodes.push(failureCode);
               options.logger.error({
                 externalId: candidate.externalId,
                 issueKey: assessmentCandidate.issueKey,
                 errorType: error instanceof Error ? error.name : typeof error,
-                failureCode: error instanceof ClassificationAttemptError
-                  ? error.failureCode
-                  : 'unexpected_error',
+                failureCode,
               }, 'Known issue assessment failed');
             }
           }
@@ -229,16 +253,37 @@ export async function runClassification(options: {
           summary.outputTokens += error.outputTokens;
         }
         summary.failed += 1;
+        const failureCode = error instanceof ClassificationAttemptError
+          ? error.failureCode
+          : 'unexpected_error';
+        failureCodes.push(failureCode);
         options.logger.error(
           {
             externalId: candidate.externalId,
             errorType: error instanceof Error ? error.name : typeof error,
-            failureCode: error instanceof ClassificationAttemptError
-              ? error.failureCode
-              : 'unexpected_error',
+            failureCode,
           },
           'Listing classification failed',
         );
+      } finally {
+        processed += 1;
+        const assessmentFailures = summary.assessmentFailed
+          + summary.listingAssessmentFailed
+          - assessmentFailuresBefore;
+        options.onProgress?.({
+          current: processed,
+          total: candidates.length,
+          externalId: candidate.externalId,
+          status: summary.failed > failuresBefore
+            ? 'failed'
+            : summary.stale > staleBefore
+              ? 'stale'
+              : assessmentFailures > 0
+                ? 'warning'
+                : 'success',
+          assessmentFailures,
+          failureCodes: [...new Set(failureCodes)],
+        });
       }
     }
   } finally {

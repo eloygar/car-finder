@@ -15,7 +15,10 @@ import {
 } from '../../../shared/src/vehicleTaxonomy.js';
 
 export class PrismaClassificationRepository implements ClassificationRepository {
-  constructor(private readonly prisma: DatabaseClient) {}
+  constructor(
+    private readonly prisma: DatabaseClient,
+    private readonly features: { listingIssueAssessments: boolean } = { listingIssueAssessments: false },
+  ) {}
 
   async findCandidates(
     options: ClassificationRunOptions,
@@ -30,7 +33,9 @@ export class PrismaClassificationRepository implements ClassificationRepository 
             { classifiedAt: null },
             { classificationVersion: null },
             { classificationVersion: { not: version } },
-            { listingIssueExtraction: { is: { issues: { some: { assessment: null } } } } },
+            ...(this.features.listingIssueAssessments
+              ? [{ listingIssueExtraction: { is: { issues: { some: { assessment: null } } } } }]
+              : []),
           ],
         } : {}),
       },
@@ -162,9 +167,10 @@ export class PrismaClassificationRepository implements ClassificationRepository 
   async findListingIssueExtraction(
     candidate: ClassificationCandidate,
     inputHash: string,
+    analysisVersion: string,
   ): Promise<{ issueCount: number } | null> {
     const extraction = await this.prisma.listingIssueExtraction.findFirst({
-      where: { listingId: candidate.id, inputHash },
+      where: { listingId: candidate.id, inputHash, analysisVersion },
       select: { _count: { select: { issues: true } } },
     });
     return extraction ? { issueCount: extraction._count.issues } : null;
@@ -204,7 +210,7 @@ export class PrismaClassificationRepository implements ClassificationRepository 
     })) ?? [];
   }
 
-  async findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean> {
+  async findKnownModelIssues(candidate: ClassificationCandidate, analysisVersion: string): Promise<boolean> {
     if (candidate.year === null) return false;
     const identity = resolveVehicleModelIdentity(candidate.brand, candidate.model);
     const vehicleModel = await this.prisma.vehicleModel.findUnique({
@@ -219,7 +225,7 @@ export class PrismaClassificationRepository implements ClassificationRepository 
     });
     if (!vehicleModel) return false;
     return (await this.prisma.knownModelIssues.count({
-      where: { vehicleModelId: vehicleModel.id, year: candidate.year },
+      where: { vehicleModelId: vehicleModel.id, year: candidate.year, analysisVersion },
     })) > 0;
   }
 

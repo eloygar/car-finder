@@ -113,6 +113,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       repository,
       logger,
       modelIssueAssessmentsEnabled: true,
+      listingIssueAssessmentsEnabled: true,
       createSession: async () => {
         const classifier = await SequentialMcpClassifier.create({
           mcp: {
