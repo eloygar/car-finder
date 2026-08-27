@@ -5,6 +5,7 @@ export default defineConfig({
     exclude: [
       'pipeline/test/integration/**',
       'mcp-server/test/integration/**',
+      'api/test/integration/**',
       'node_modules/**',
     ],
   },

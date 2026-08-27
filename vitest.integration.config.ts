@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       'pipeline/test/integration/**/*.test.ts',
       'mcp-server/test/integration/**/*.test.ts',
+      'api/test/integration/**/*.test.ts',
     ],
     hookTimeout: 30_000,
     testTimeout: 30_000,
