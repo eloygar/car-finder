@@ -17,6 +17,40 @@ export interface VehicleOperabilitySubmission {
 
 export type VehicleOperabilityResult = Omit<VehicleOperabilitySubmission, 'description'>;
 
+export interface AnthropicToolUsage {
+  inputTokens: number;
+  outputTokens: number;
+  webSearchRequests: number;
+}
+
+export interface OperationalStatusToolResult {
+  operability: VehicleOperabilityResult;
+  model: string;
+  usage: AnthropicToolUsage;
+}
+
+export interface KnownIssuesWebSource {
+  title: string;
+  url: string;
+}
+
+export interface KnownIssuesWebAnalysis {
+  found: boolean;
+  summary: string;
+  sources: KnownIssuesWebSource[];
+}
+
+export interface KnownIssuesWebToolResult {
+  knownIssues: KnownIssuesWebAnalysis;
+  model: string;
+  usage: AnthropicToolUsage;
+}
+
+export interface VehicleAnalysisService {
+  checkOperationalStatus(description: string): Promise<OperationalStatusToolResult>;
+  checkKnownIssuesWeb(query: VehicleQuery): Promise<KnownIssuesWebToolResult>;
+}
+
 export type KnownIssueSeverity = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface KnownIssueMatch {

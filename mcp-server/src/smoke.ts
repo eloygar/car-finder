@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-const EXPECTED_TOOLS = ['classify_vehicle_operability'] as const;
+const EXPECTED_TOOLS = ['check_operational_status', 'check_known_issues_web'] as const;
 
 export interface SmokeResult {
   tools: string[];
@@ -22,16 +22,10 @@ export async function runSmoke(description: string): Promise<SmokeResult> {
     }
 
     const classification = await client.callTool({
-      name: 'classify_vehicle_operability',
-      arguments: {
-        description,
-        status: 'unknown',
-        confidence: 'low',
-        evidence: [],
-        reason: 'Smoke test validates the MCP protocol boundary only.',
-      },
+      name: 'check_operational_status',
+      arguments: { description },
     });
-    assertToolSucceeded('classify_vehicle_operability', classification);
+    assertToolSucceeded('check_operational_status', classification);
 
     return {
       tools: toolNames,

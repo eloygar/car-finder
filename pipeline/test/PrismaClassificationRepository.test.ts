@@ -4,11 +4,18 @@ import { PrismaClassificationRepository } from '../src/classify/PrismaClassifica
 import type { DatabaseClient } from '../src/db/client.js';
 
 const classification = {
-  status: 'operational' as const,
-  confidence: 'high' as const,
-  evidence: ['funciona perfectamente'],
-  reason: 'The description explicitly says it works.',
-  toolResults: {},
+  operability: {
+    status: 'operational' as const,
+    confidence: 'high' as const,
+    evidence: ['funciona perfectamente'],
+    reason: 'The description explicitly says it works.',
+  },
+  knownIssuesWeb: {
+    status: 'completed' as const,
+    found: false,
+    summary: 'No documented model-level issue was found.',
+    sources: [],
+  },
 };
 
 function row() {

@@ -7,24 +7,70 @@ import { estimateMarketPrice } from './tools/estimateMarketPrice.js';
 import {
   checkKnownIssuesOutputSchema,
   estimateMarketPriceOutputSchema,
+  knownIssuesWebToolOutputSchema,
+  operationalStatusInputSchema,
+  operationalStatusToolOutputSchema,
   vehicleOperabilityOutputSchema,
   vehicleOperabilitySubmissionSchema,
   vehicleQuerySchema,
 } from './tools/schemas.js';
-import type { McpToolRepository } from './tools/types.js';
+import type { McpToolRepository, VehicleAnalysisService } from './tools/types.js';
 
 export interface CreateMcpServerOptions {
-  repository: McpToolRepository;
+  analysisService: VehicleAnalysisService;
+  repository?: McpToolRepository;
   logger: Pick<Logger, 'error'>;
   enableLegacyTools?: boolean;
 }
 
 export function createMcpServer({
+  analysisService,
   repository,
   logger,
   enableLegacyTools = false,
 }: CreateMcpServerOptions): McpServer {
   const server = new McpServer({ name: 'car-finder', version: '0.1.0' });
+
+  server.registerTool(
+    'check_operational_status',
+    {
+      title: 'Check Vehicle Operational Status',
+      description: 'Use Claude Sonnet 5 without tools to determine from the seller description whether the vehicle can start and move under its own power.',
+      inputSchema: operationalStatusInputSchema,
+      outputSchema: operationalStatusToolOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ description }) => {
+      try {
+        return toolSuccess(await analysisService.checkOperationalStatus(description));
+      } catch (error) {
+        logToolFailure(logger, 'check_operational_status', error);
+        return toolFailure('operational_status_failed', 'The vehicle operational status could not be determined.');
+      }
+    },
+  );
+
+  server.registerTool(
+    'check_known_issues_web',
+    {
+      title: 'Check Known Vehicle Issues on the Web',
+      description: 'Use Claude Haiku 4.5 and its native web search tool to summarize documented model-level problems and recalls.',
+      inputSchema: vehicleQuerySchema,
+      outputSchema: knownIssuesWebToolOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (query) => {
+      try {
+        return toolSuccess(await analysisService.checkKnownIssuesWeb(query));
+      } catch (error) {
+        logToolFailure(logger, 'check_known_issues_web', error);
+        return toolFailure('known_issues_web_failed', 'Known vehicle issues could not be researched.');
+      }
+    },
+  );
+
+  if (!enableLegacyTools) return server;
+  if (!repository) throw new Error('A repository is required when legacy MCP tools are enabled');
 
   server.registerTool(
     'classify_vehicle_operability',
@@ -44,8 +90,6 @@ export function createMcpServer({
       }
     },
   );
-
-  if (!enableLegacyTools) return server;
 
   server.registerTool(
     'check_known_issues',

@@ -28,7 +28,7 @@ help:
 	@echo "  make classify-all      Classify every pending or outdated active listing"
 	@echo "  make classify-one      Classify one listing (CLASSIFY_ID)"
 	@echo "  make classify-dry      Count all pending listings without paid calls"
-	@echo "  make mcp-smoke         Call both MCP tools (BRAND, MODEL, YEAR)"
+	@echo "  make mcp-smoke         Call the operational-status MCP tool (DESCRIPTION)"
 	@echo "  make mcp-server        Start the MCP stdio server"
 	@echo "  make app               Start the local search UI and API"
 	@echo "  make app-build         Build the React frontend"

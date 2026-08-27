@@ -9,10 +9,11 @@ import { createPrismaClient } from './db/client.js';
 import { PrismaClassificationRepository } from './classify/PrismaClassificationRepository.js';
 import { createClassifierSession } from './classify/createClassifierSession.js';
 import { runClassification } from './classify/runClassification.js';
+import type { ClassificationRunOptions } from './classify/types.js';
 import {
-  DEFAULT_CLASSIFICATION_MODEL,
-  type ClassificationRunOptions,
-} from './classify/types.js';
+  DEFAULT_KNOWN_ISSUES_WEB_MODEL,
+  DEFAULT_OPERATIONAL_STATUS_MODEL,
+} from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
 
 export function parseClassificationArgs(args: readonly string[]): ClassificationRunOptions {
   let all = false;
@@ -68,17 +69,22 @@ async function main(): Promise<void> {
     if (!run.dryRun && !apiKey) {
       throw new Error('ANTHROPIC_API_KEY is required for live classification');
     }
-    const model = process.env.ANTHROPIC_MODEL ?? DEFAULT_CLASSIFICATION_MODEL;
+    const operationalStatusModel = process.env.OPERATIONAL_STATUS_MODEL ?? DEFAULT_OPERATIONAL_STATUS_MODEL;
+    const knownIssuesWebModel = process.env.KNOWN_ISSUES_WEB_MODEL ?? DEFAULT_KNOWN_ISSUES_WEB_MODEL;
     prisma = createPrismaClient();
     const summary = await runClassification({
       run,
       repository: new PrismaClassificationRepository(prisma),
       logger,
       ...(!run.dryRun ? {
-        createSession: () => createClassifierSession({ apiKey: apiKey!, model, logger }),
+        createSession: () => createClassifierSession({ logger }),
       } : {}),
     });
-    logger.info({ ...summary, model: run.dryRun ? undefined : model }, 'Classification run completed');
+    logger.info({
+      ...summary,
+      operationalStatusModel: run.dryRun ? undefined : operationalStatusModel,
+      knownIssuesWebModel: run.dryRun ? undefined : knownIssuesWebModel,
+    }, 'Classification run completed');
     if (summary.failed > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof HelpRequested) {

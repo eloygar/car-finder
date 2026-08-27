@@ -85,7 +85,7 @@ export interface ListingRecord {
   firstSeenAt: string;
   lastSeenAt: string;
   rawPayload: unknown | null;
-  classification: VehicleOperabilityClassification | Record<string, unknown> | null;
+  classification: ListingClassification | VehicleOperabilityClassification | Record<string, unknown> | null;
   classificationVersion: string | null;
   classifiedAt: string | null;
 }
@@ -95,6 +95,18 @@ export interface VehicleOperabilityClassification {
   confidence: 'low' | 'medium' | 'high';
   evidence: string[];
   reason: string;
+}
+
+export interface ListingClassification {
+  operability: VehicleOperabilityClassification;
+  knownIssuesWeb:
+    | {
+        status: 'completed';
+        found: boolean;
+        summary: string;
+        sources: Array<{ title: string; url: string }>;
+      }
+    | { status: 'skipped'; reason: 'non_operational' | 'unknown' };
 }
 
 export interface ListingsResponse {

@@ -18,6 +18,37 @@ export const vehicleOperabilityOutputSchema = vehicleOperabilitySubmissionSchema
   description: true,
 });
 
+export const operationalStatusInputSchema = z.strictObject({
+  description: z.string().describe('Untrusted seller description to analyze'),
+});
+
+const anthropicToolUsageSchema = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  webSearchRequests: z.number().int().nonnegative(),
+});
+
+export const operationalStatusToolOutputSchema = z.strictObject({
+  operability: vehicleOperabilityOutputSchema,
+  model: z.string(),
+  usage: anthropicToolUsageSchema,
+});
+
+export const knownIssuesWebAnalysisSchema = z.strictObject({
+  found: z.boolean(),
+  summary: z.string().trim().min(1),
+  sources: z.array(z.strictObject({
+    title: z.string().trim().min(1),
+    url: z.string().trim().min(1),
+  })),
+});
+
+export const knownIssuesWebToolOutputSchema = z.strictObject({
+  knownIssues: knownIssuesWebAnalysisSchema,
+  model: z.string(),
+  usage: anthropicToolUsageSchema,
+});
+
 const nullableYear = z.number().int().nullable();
 
 export const checkKnownIssuesOutputSchema = z.object({

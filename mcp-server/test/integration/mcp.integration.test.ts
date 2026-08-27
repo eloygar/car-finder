@@ -67,10 +67,14 @@ describe('MCP stdio server', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
       'check_known_issues',
+      'check_known_issues_web',
+      'check_operational_status',
       'classify_vehicle_operability',
       'estimate_market_price',
     ]);
-    const vehicleTools = listed.tools.filter(({ name }) => name !== 'classify_vehicle_operability');
+    const vehicleTools = listed.tools.filter(({ name }) => [
+      'check_known_issues', 'check_known_issues_web', 'estimate_market_price',
+    ].includes(name));
     expect(vehicleTools.every(({ inputSchema }) => Array.isArray(inputSchema.required)
       && inputSchema.required.includes('brand')
       && inputSchema.required.includes('model'))).toBe(true);

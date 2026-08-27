@@ -2,7 +2,7 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createMcpServer } from '../src/createServer.js';
-import type { McpToolRepository } from '../src/tools/types.js';
+import type { McpToolRepository, VehicleAnalysisService } from '../src/tools/types.js';
 
 const closeCallbacks: Array<() => Promise<void>> = [];
 
@@ -12,7 +12,7 @@ afterEach(async () => {
 
 async function connectedClient(repository: McpToolRepository, enableLegacyTools = false) {
   const logger = { error: vi.fn() };
-  const server = createMcpServer({ repository, logger, enableLegacyTools });
+  const server = createMcpServer({ repository, logger, enableLegacyTools, analysisService: analysisService() });
   const client = new Client({ name: 'unit-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -24,7 +24,7 @@ async function connectedClient(repository: McpToolRepository, enableLegacyTools 
 }
 
 describe('createMcpServer', () => {
-  it('advertises only operability by default and returns structured content', async () => {
+  it('advertises the two AI analysis tools by default and returns structured content', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue(['1.00', '2.00', '3.00']),
@@ -32,26 +32,27 @@ describe('createMcpServer', () => {
     const { client } = await connectedClient(repository);
 
     const listed = await client.listTools();
-    expect(listed.tools.map(({ name }) => name)).toEqual(['classify_vehicle_operability']);
+    expect(listed.tools.map(({ name }) => name)).toEqual([
+      'check_operational_status',
+      'check_known_issues_web',
+    ]);
     expect(listed.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
     expect(listed.tools.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
 
     const result = await client.callTool({
-      name: 'classify_vehicle_operability',
+      name: 'check_operational_status',
       arguments: {
         description: 'Funciona perfectamente.',
-        status: 'operational',
-        confidence: 'high',
-        evidence: ['Funciona perfectamente'],
-        reason: 'The seller explicitly says it works.',
       },
     });
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toEqual({
-      status: 'operational',
-      confidence: 'high',
-      evidence: ['Funciona perfectamente'],
-      reason: 'The seller explicitly says it works.',
+      operability: {
+        status: 'operational', confidence: 'high', evidence: ['Funciona perfectamente'],
+        reason: 'The seller explicitly says it works.',
+      },
+      model: 'claude-sonnet-5',
+      usage: { inputTokens: 10, outputTokens: 2, webSearchRequests: 0 },
     });
     expect(JSON.parse(result.content[0]?.type === 'text' ? result.content[0].text : '')).toEqual(
       result.structuredContent,
@@ -68,6 +69,8 @@ describe('createMcpServer', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
       'check_known_issues',
+      'check_known_issues_web',
+      'check_operational_status',
       'classify_vehicle_operability',
       'estimate_market_price',
     ]);
@@ -78,7 +81,7 @@ describe('createMcpServer', () => {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue([]),
     };
-    const { client } = await connectedClient(repository);
+    const { client } = await connectedClient(repository, true);
 
     const result = await client.callTool({
       name: 'classify_vehicle_operability',
@@ -124,3 +127,21 @@ describe('createMcpServer', () => {
     expect(recovered.isError).not.toBe(true);
   });
 });
+
+function analysisService(): VehicleAnalysisService {
+  return {
+    checkOperationalStatus: vi.fn().mockResolvedValue({
+      operability: {
+        status: 'operational', confidence: 'high', evidence: ['Funciona perfectamente'],
+        reason: 'The seller explicitly says it works.',
+      },
+      model: 'claude-sonnet-5',
+      usage: { inputTokens: 10, outputTokens: 2, webSearchRequests: 0 },
+    }),
+    checkKnownIssuesWeb: vi.fn().mockResolvedValue({
+      knownIssues: { found: false, summary: 'No documented issues found.', sources: [] },
+      model: 'claude-haiku-4-5-20251001',
+      usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
+    }),
+  };
+}

@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import type {
+  ListingClassification,
   ListingsResponse,
   ListingRecord,
   VehicleOperabilityClassification,
@@ -602,6 +603,7 @@ function ClassificationSummary({ item }: { item: ListingRecord }) {
 
 function ClassificationDetails({ item }: { item: ListingRecord }) {
   const classification = asOperabilityClassification(item.classification);
+  const knownIssues = asListingClassification(item.classification)?.knownIssuesWeb;
 
   if (classification) {
     return (
@@ -614,7 +616,7 @@ function ClassificationDetails({ item }: { item: ListingRecord }) {
             Confianza {confidenceLabel(classification.confidence)}
           </span>
           {item.classificationVersion ? (
-            <span className="classification-version">v{item.classificationVersion}</span>
+            <span className="classification-version">{item.classificationVersion}</span>
           ) : null}
         </div>
         <p className="classification-reason-full">{classification.reason}</p>
@@ -627,6 +629,21 @@ function ClassificationDetails({ item }: { item: ListingRecord }) {
               ))}
             </ul>
           </div>
+        ) : null}
+        {knownIssues?.status === 'completed' ? (
+          <div className="evidence">
+            <p className="evidence-title">Problemas conocidos del modelo</p>
+            <p className="classification-reason-full">{knownIssues.summary}</p>
+            {knownIssues.sources.length > 0 ? (
+              <ul className="evidence-list">
+                {knownIssues.sources.map((source) => (
+                  <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a></li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : knownIssues?.status === 'skipped' ? (
+          <p className="classification-reason-full">Búsqueda web omitida porque el vehículo no se clasificó como operativo.</p>
         ) : null}
       </section>
     );
@@ -655,7 +672,10 @@ function asOperabilityClassification(
   value: ListingRecord['classification'],
 ): VehicleOperabilityClassification | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const candidate = value as Partial<VehicleOperabilityClassification>;
+  const nested = Reflect.get(value, 'operability');
+  const candidate = (
+    typeof nested === 'object' && nested !== null && !Array.isArray(nested) ? nested : value
+  ) as Partial<VehicleOperabilityClassification>;
   if (
     !['operational', 'non_operational', 'unknown'].includes(candidate.status ?? '')
     || !['low', 'medium', 'high'].includes(candidate.confidence ?? '')
@@ -663,6 +683,25 @@ function asOperabilityClassification(
     || typeof candidate.reason !== 'string'
   ) return null;
   return candidate as VehicleOperabilityClassification;
+}
+
+function asListingClassification(value: ListingRecord['classification']): ListingClassification | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const operability = asOperabilityClassification(value);
+  const knownIssuesWeb = Reflect.get(value, 'knownIssuesWeb');
+  if (!operability || typeof knownIssuesWeb !== 'object' || knownIssuesWeb === null) return null;
+  const status = Reflect.get(knownIssuesWeb, 'status');
+  if (status === 'skipped') {
+    const reason = Reflect.get(knownIssuesWeb, 'reason');
+    if (reason !== 'non_operational' && reason !== 'unknown') return null;
+  } else if (status === 'completed') {
+    if (
+      typeof Reflect.get(knownIssuesWeb, 'found') !== 'boolean'
+      || typeof Reflect.get(knownIssuesWeb, 'summary') !== 'string'
+      || !Array.isArray(Reflect.get(knownIssuesWeb, 'sources'))
+    ) return null;
+  } else return null;
+  return value as ListingClassification;
 }
 
 function operabilityLabel(status: VehicleOperabilityClassification['status']): string {
