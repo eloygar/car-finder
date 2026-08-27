@@ -14,6 +14,7 @@ import {
   DEFAULT_KNOWN_ISSUES_WEB_MODEL,
   DEFAULT_ISSUE_ASSESSMENT_MODEL,
   DEFAULT_OPERATIONAL_STATUS_MODEL,
+  DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL,
 } from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
 
 export function parseClassificationArgs(args: readonly string[]): ClassificationRunOptions {
@@ -79,6 +80,7 @@ async function main(): Promise<void> {
     const operationalStatusModel = process.env.OPERATIONAL_STATUS_MODEL ?? DEFAULT_OPERATIONAL_STATUS_MODEL;
     const knownIssuesWebModel = process.env.KNOWN_ISSUES_WEB_MODEL ?? DEFAULT_KNOWN_ISSUES_WEB_MODEL;
     const issueAssessmentModel = process.env.ISSUE_ASSESSMENT_MODEL ?? DEFAULT_ISSUE_ASSESSMENT_MODEL;
+    const listingIssueExtractionModel = process.env.LISTING_ISSUE_EXTRACTION_MODEL ?? DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL;
     prisma = createPrismaClient();
     const summary = await runClassification({
       run,
@@ -93,8 +95,9 @@ async function main(): Promise<void> {
       operationalStatusModel: run.dryRun ? undefined : operationalStatusModel,
       knownIssuesWebModel: run.dryRun ? undefined : knownIssuesWebModel,
       issueAssessmentModel: run.dryRun ? undefined : issueAssessmentModel,
+      listingIssueExtractionModel: run.dryRun ? undefined : listingIssueExtractionModel,
     }, 'Classification run completed');
-    if (summary.failed > 0 || summary.assessmentFailed > 0) process.exitCode = 1;
+    if (summary.failed > 0 || summary.assessmentFailed > 0 || summary.listingAssessmentFailed > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof HelpRequested) {
       process.stdout.write(`${usage()}\n`);

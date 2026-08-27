@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ClassificationDetails, ClassificationSummary } from './ListingsPage.js';
-import type { KnownModelIssues, ListingRecord } from './types.js';
+import type { KnownModelIssues, ListingIssueExtraction, ListingRecord } from './types.js';
 
 const operability = {
   status: 'operational' as const, confidence: 'high' as const,
@@ -26,6 +26,20 @@ const issues: KnownModelIssues = {
       issue: 'Reinicio ocasional del infoentretenimiento.', category: 'interior', assessment: null,
     },
   ],
+};
+const listingIssues: ListingIssueExtraction = {
+  extractedAt: '2026-08-27T10:00:00Z',
+  issues: [{
+    category: 'bodywork', description: 'Tiene un golpe en la puerta.', evidence: ['golpe en puerta'],
+    assessment: {
+      severity: 'low', estimatedCostMinEUR: 150, estimatedCostMaxEUR: 450,
+      reasoning: 'Daño estético reparable.',
+      sources: [{ title: 'Tarifas de chapa', url: 'https://example.test/chapa' }],
+      pricingYear: 2026, assessedAt: '2026-08-27T10:00:00Z',
+    },
+  }, {
+    category: 'mechanical', description: 'Pierde aceite.', evidence: ['pierde aceite'], assessment: null,
+  }],
 };
 
 describe('listing classification presentation', () => {
@@ -69,9 +83,32 @@ describe('listing classification presentation', () => {
     expect(renderToStaticMarkup(<ClassificationSummary item={legacy} />)).toContain('Versión anterior');
     expect(renderToStaticMarkup(<ClassificationSummary item={listing(null, false)} />)).toContain('Sin clasificar');
   });
+
+  it('keeps listing-specific issues separate with evidence, assessment, pending state and disclaimer', () => {
+    const html = renderToStaticMarkup(<ClassificationDetails item={listing(issues, true, listingIssues)} />);
+    expect(html).toContain('Incidencias declaradas en el anuncio');
+    expect(html).toContain('golpe en puerta');
+    expect(html).toContain('Evaluación pendiente');
+    expect(html).toContain('no sustituye una inspección');
+    expect(html).toContain('target="_blank"');
+    const summary = renderToStaticMarkup(<ClassificationSummary item={listing(issues, true, listingIssues)} />);
+    expect(summary).toContain('2 incidencias del anuncio');
+    expect(summary).toContain('1 pendiente');
+  });
+
+  it('renders no declared defects and not analyzed as distinct states', () => {
+    expect(renderToStaticMarkup(<ClassificationDetails item={listing(issues, true, {
+      extractedAt: '2026-08-27T10:00:00Z', issues: [],
+    })} />)).toContain('Sin defectos declarados');
+    expect(renderToStaticMarkup(<ClassificationDetails item={listing(issues)} />)).toContain('Sin analizar');
+  });
 });
 
-function listing(knownModelIssues: KnownModelIssues | null, classified = true): ListingRecord {
+function listing(
+  knownModelIssues: KnownModelIssues | null,
+  classified = true,
+  listingIssueExtraction: ListingIssueExtraction | null = null,
+): ListingRecord {
   return {
     id: 'db-1', externalId: 'external-1', provider: 'wallapop', title: 'Toyota Corolla', description: null,
     price: 10_000, brand: 'Toyota', model: 'Corolla', year: 2020, mileage: null, fuelType: null,
@@ -80,8 +117,9 @@ function listing(knownModelIssues: KnownModelIssues | null, classified = true): 
     status: 'active', contentHash: 'hash', firstSeenAt: '2026-08-27T10:00:00Z',
     lastSeenAt: '2026-08-27T10:00:00Z', rawPayload: null,
     classification: classified ? { operability } : null,
-    classificationVersion: classified ? 'v4-operability-model-issues' : null,
+    classificationVersion: classified ? 'v5-operability-listing-issues' : null,
     classifiedAt: classified ? '2026-08-27T10:00:00Z' : null,
     knownModelIssues,
+    listingIssueExtraction,
   };
 }

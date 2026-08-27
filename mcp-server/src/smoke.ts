@@ -5,6 +5,7 @@ const EXPECTED_TOOLS = [
   'assess_issue_severity_and_cost',
   'check_operational_status',
   'check_known_issues_web',
+  'extract_vehicle_issues_from_text',
 ] as const;
 
 export interface SmokeResult {

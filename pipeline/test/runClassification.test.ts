@@ -20,8 +20,11 @@ function repository(cached = false, saved = true): ClassificationRepository {
   return {
     findCandidates: vi.fn().mockResolvedValue([candidate]),
     findKnownModelIssues: vi.fn().mockResolvedValue(cached),
+    findListingIssueExtraction: vi.fn().mockResolvedValue({ issueCount: 0 }),
     findIssueAssessmentCandidates: vi.fn().mockResolvedValue([]),
+    findListingIssueAssessmentCandidates: vi.fn().mockResolvedValue([]),
     saveIssueAssessment: vi.fn().mockResolvedValue(undefined),
+    saveListingIssueAssessment: vi.fn().mockResolvedValue(undefined),
     saveClassification: vi.fn().mockResolvedValue(saved),
   };
 }
@@ -31,6 +34,10 @@ function classifier(): ListingClassifier {
     classifyOperability: vi.fn().mockResolvedValue({ operability, inputTokens: 10, outputTokens: 2 }),
     researchKnownIssues: vi.fn().mockResolvedValue({
       analysis, anthropicModel: 'claude-haiku', inputTokens: 20, outputTokens: 4,
+    }),
+    extractListingIssues: vi.fn().mockResolvedValue({
+      issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+      anthropicModel: 'claude-haiku', inputTokens: 4, outputTokens: 1,
     }),
     assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
       assessment: {
@@ -48,7 +55,7 @@ describe('runClassification', () => {
     const summary = await runClassification({
       run: { ...run, dryRun: true }, repository: repository(), createSession, logger,
     });
-    expect(summary).toMatchObject({ selected: 1, classified: 0, version: 'v4-operability-model-issues' });
+    expect(summary).toMatchObject({ selected: 1, classified: 0, version: 'v5-operability-listing-issues' });
     expect(createSession).not.toHaveBeenCalled();
   });
 
@@ -61,7 +68,7 @@ describe('runClassification', () => {
     });
     expect(summary).toMatchObject({ classified: 1, inputTokens: 30, outputTokens: 6 });
     expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
-      candidate, classification: { operability }, version: 'v4-operability-model-issues',
+      candidate, classification: { operability }, version: 'v5-operability-listing-issues',
       researchedIssues: { analysis, anthropicModel: 'claude-haiku', analysisVersion: 'v1-categorized' },
     }));
   });
@@ -154,5 +161,100 @@ describe('runClassification', () => {
       candidate: expect.objectContaining({ issueKey: 'success' }),
       analysisVersion: 'v1-spain-mixed-cost',
     }));
+  });
+
+  it('extracts changed listing text, persists it atomically, and evaluates listing issues first', async () => {
+    const described = { ...candidate, description: 'Pierde aceite.' };
+    const repo = repository(true);
+    vi.mocked(repo.findCandidates).mockResolvedValue([described]);
+    vi.mocked(repo.findListingIssueExtraction).mockResolvedValue(null);
+    vi.mocked(repo.findListingIssueAssessmentCandidates).mockResolvedValue([{
+      detectedIssueId: 'detected-1', brand: 'Toyota', model: 'Corolla', year: 2020,
+      issue: 'Pierde aceite.', issueKey: 'listing-key', evidence: ['Pierde aceite'], cached: false,
+    }]);
+    vi.mocked(repo.findIssueAssessmentCandidates).mockResolvedValue([{
+      vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla',
+      issue: 'Fallo general.', issueKey: 'general-key', cached: false,
+    }]);
+    const service = classifier();
+    vi.mocked(service.extractListingIssues).mockResolvedValue({
+      issues: {
+        mechanical: [{ description: 'Pierde aceite.', evidence: ['Pierde aceite'] }],
+        bodywork: [], interior: [], other: [],
+      }, anthropicModel: 'haiku', inputTokens: 4, outputTokens: 2,
+    });
+
+    const summary = await runClassification({
+      run, repository: repo, logger,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+
+    expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
+      listingExtraction: expect.objectContaining({
+        analysisVersion: 'v1-explicit-defects',
+        issues: expect.objectContaining({ mechanical: [expect.objectContaining({ description: 'Pierde aceite.' })] }),
+      }),
+    }));
+    expect(summary).toMatchObject({
+      listingIssuesDetected: 1, listingAssessmentsSelected: 1, listingAssessed: 1,
+      assessmentsSelected: 1, assessed: 1,
+    });
+    expect(vi.mocked(service.assessIssueSeverityAndCost).mock.calls.map(([entry]) => entry.issueKey))
+      .toEqual(['listing-key', 'general-key']);
+  });
+
+  it('completes empty descriptions without an extraction call and caches the empty result', async () => {
+    const repo = repository(true);
+    vi.mocked(repo.findListingIssueExtraction).mockResolvedValue(null);
+    const service = classifier();
+    await runClassification({
+      run, repository: repo, logger,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+    expect(service.extractListingIssues).not.toHaveBeenCalled();
+    expect(repo.saveClassification).toHaveBeenCalledWith(expect.objectContaining({
+      listingExtraction: expect.objectContaining({
+        anthropicModel: 'not-invoked-empty-description',
+        issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+      }),
+    }));
+  });
+
+  it('does not persist classification when listing extraction fails', async () => {
+    const repo = repository(true);
+    vi.mocked(repo.findCandidates).mockResolvedValue([{ ...candidate, description: 'Tiene una avería.' }]);
+    vi.mocked(repo.findListingIssueExtraction).mockResolvedValue(null);
+    const service = classifier();
+    vi.mocked(service.extractListingIssues).mockRejectedValue(
+      new ClassificationAttemptError('invalid extraction', 3, 2, 'invalid_evidence'),
+    );
+    const summary = await runClassification({
+      run, repository: repo, logger,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+    expect(summary).toMatchObject({ classified: 0, failed: 1, inputTokens: 13, outputTokens: 4 });
+    expect(repo.saveClassification).not.toHaveBeenCalled();
+  });
+
+  it('keeps a non-operational listing assessment but skips every general assessment', async () => {
+    const repo = repository(true);
+    vi.mocked(repo.findListingIssueAssessmentCandidates).mockResolvedValue([{
+      detectedIssueId: 'detected-1', brand: 'Toyota', model: 'Corolla', year: 2020,
+      issue: 'No arranca.', issueKey: 'listing-key', evidence: ['no arranca'], cached: false,
+    }]);
+    vi.mocked(repo.findIssueAssessmentCandidates).mockResolvedValue([{
+      vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla',
+      issue: 'General.', issueKey: 'general-key', cached: false,
+    }]);
+    const service = classifier();
+    vi.mocked(service.classifyOperability).mockResolvedValue({
+      operability: { ...operability, status: 'non_operational' }, inputTokens: 1, outputTokens: 1,
+    });
+    const summary = await runClassification({
+      run, repository: repo, logger,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+    expect(summary).toMatchObject({ listingAssessed: 1, assessmentsSelected: 0 });
+    expect(repo.findIssueAssessmentCandidates).not.toHaveBeenCalled();
   });
 });

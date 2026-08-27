@@ -58,7 +58,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     await prisma.$disconnect();
   });
 
-  it('runs both MCP stages, stores JSONB, and becomes idempotent', async () => {
+  it('runs the ordered MCP stages, stores relational results, and becomes idempotent', async () => {
     const repository = new PrismaClassificationRepository(prisma);
     const callTool = vi.fn()
       .mockResolvedValueOnce({
@@ -71,12 +71,31 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         usage: { inputTokens: 10, outputTokens: 5, webSearchRequests: 0 },
       })
       .mockResolvedValueOnce({
+        issues: {
+          mechanical: [],
+          bodywork: [{ description: 'Tiene un golpe.', evidence: ['golpe'] }],
+          interior: [], other: [],
+        },
+        model: 'claude-haiku-4-5-20251001',
+        usage: { inputTokens: 8, outputTokens: 4, webSearchRequests: 0 },
+      })
+      .mockResolvedValueOnce({
         knownIssues: {
           mechanical: ['Fallo conocido de integración.'], bodywork: [], interior: [], other: [],
           sources: [{ title: 'Source', url: 'https://example.com/integration-issue' }],
         },
         model: 'claude-haiku-4-5-20251001',
         usage: { inputTokens: 12, outputTokens: 6, webSearchRequests: 1 },
+      })
+      .mockResolvedValueOnce({
+        assessment: {
+          severity: 'low', estimatedCostMinEUR: 150, estimatedCostMaxEUR: 450,
+          reasoning: 'El daño de chapa es reparable.',
+          sources: [{ title: 'Body shop', url: 'https://example.com/body-shop' }],
+        },
+        pricingYear: 2026,
+        model: 'claude-haiku-4-5-20251001',
+        usage: { inputTokens: 13, outputTokens: 6, webSearchRequests: 1 },
       })
       .mockResolvedValueOnce({
         assessment: {
@@ -98,6 +117,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
           mcp: {
             listTools: async () => [
               { name: 'check_operational_status' }, { name: 'check_known_issues_web' },
+              { name: 'extract_vehicle_issues_from_text' },
               { name: 'assess_issue_severity_and_cost' },
             ],
             callTool,
@@ -110,14 +130,16 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     expect(summary).toMatchObject({
       selected: 1, classified: 1, failed: 0, stale: 0,
       assessmentsSelected: 1, assessed: 1, assessmentFailed: 0,
+      listingIssuesDetected: 1, listingAssessmentsSelected: 1, listingAssessed: 1,
     });
     expect(callTool.mock.calls.map(([name]) => name)).toEqual([
-      'check_operational_status', 'check_known_issues_web', 'assess_issue_severity_and_cost',
+      'check_operational_status', 'extract_vehicle_issues_from_text', 'check_known_issues_web',
+      'assess_issue_severity_and_cost', 'assess_issue_severity_and_cost',
     ]);
     const stored = await prisma.listing.findUniqueOrThrow({
       where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
     });
-    expect(stored).toMatchObject({ classificationVersion: 'v4-operability-model-issues' });
+    expect(stored).toMatchObject({ classificationVersion: 'v5-operability-listing-issues' });
     expect(stored.classification).toMatchObject({
       operability: {
         status: 'operational', confidence: 'high',
@@ -132,6 +154,15 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       where: { vehicleModelId: relationalIssues.vehicleModelId },
     });
     expect(assessment).toMatchObject({ severity: 'high', estimatedCostMinEUR: 700, pricingYear: 2026 });
+    const listingExtraction = await prisma.listingIssueExtraction.findUniqueOrThrow({
+      where: { listingId: stored.id }, include: { issues: { include: { assessment: true } } },
+    });
+    expect(listingExtraction.issues).toEqual([
+      expect.objectContaining({
+        category: 'bodywork', description: 'Tiene un golpe.', evidence: ['golpe'],
+        assessment: expect.objectContaining({ severity: 'low', estimatedCostMinEUR: 150 }),
+      }),
+    ]);
 
     const second = await runClassification({
       run: { all: false, dryRun: true, force: false, refreshKnownIssues: false, only: externalIds[0] },
@@ -191,5 +222,61 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     expect(await prisma.modelIssueAssessment.count({
       where: { vehicleModelId: model.id, issueKey: candidate.issueKey },
     })).toBe(1);
+  });
+
+  it('deduplicates concurrent listing assessment upserts one-to-one', async () => {
+    const issue = await prisma.listingDetectedIssue.findFirstOrThrow({
+      where: { extraction: { listing: { externalId: externalIds[0] } } },
+    });
+    await prisma.listingIssueAssessment.deleteMany({ where: { detectedIssueId: issue.id } });
+    const repository = new PrismaClassificationRepository(prisma);
+    const candidate = {
+      detectedIssueId: issue.id, brand: 'IntegrationBrand', model: 'IntegrationModel', year: 2020,
+      issue: issue.description, issueKey: issue.issueKey, evidence: issue.evidence, cached: false,
+    };
+    const result = {
+      candidate,
+      assessment: {
+        severity: 'medium' as const, estimatedCostMinEUR: 250, estimatedCostMaxEUR: 600,
+        reasoning: 'Actualización concurrente.', sources: [{ title: 'Taller', url: 'https://example.test' }],
+      },
+      pricingYear: 2026, anthropicModel: 'test', analysisVersion: 'v2', assessedAt: new Date(),
+    };
+    await Promise.all([
+      repository.saveListingIssueAssessment(result), repository.saveListingIssueAssessment(result),
+    ]);
+    expect(await prisma.listingIssueAssessment.count({ where: { detectedIssueId: issue.id } })).toBe(1);
+  });
+
+  it('replaces a changed extraction and cascades its old issues and assessments', async () => {
+    const listing = await prisma.listing.findUniqueOrThrow({
+      where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
+      include: { listingIssueExtraction: { include: { issues: true } } },
+    });
+    const oldIssueId = listing.listingIssueExtraction!.issues[0]!.id;
+    const repository = new PrismaClassificationRepository(prisma);
+    await expect(repository.saveClassification({
+      candidate: {
+        id: listing.id, externalId: listing.externalId, contentHash: listing.contentHash,
+        title: listing.title, description: 'Descripción nueva.', price: listing.price.toFixed(2),
+        brand: listing.brand, model: listing.model, year: listing.year, mileage: listing.mileage,
+        fuelType: listing.fuelType, transmission: listing.transmission, bodyType: listing.bodyType, images: listing.images,
+      },
+      classification: {
+        operability: {
+          status: 'operational', confidence: 'high', evidence: ['Funciona perfectamente'], reason: 'Funciona.',
+        },
+      },
+      version: 'v5-operability-listing-issues', classifiedAt: new Date(),
+      listingExtraction: {
+        inputHash: 'replacement-hash', anthropicModel: 'test', analysisVersion: 'v1-explicit-defects',
+        issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+      },
+    })).resolves.toBe(true);
+    expect(await prisma.listingDetectedIssue.findUnique({ where: { id: oldIssueId } })).toBeNull();
+    expect(await prisma.listingIssueAssessment.count({ where: { detectedIssueId: oldIssueId } })).toBe(0);
+    expect(await prisma.listingIssueExtraction.findUniqueOrThrow({
+      where: { listingId: listing.id }, select: { inputHash: true },
+    })).toEqual({ inputHash: 'replacement-hash' });
   });
 });

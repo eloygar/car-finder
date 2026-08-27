@@ -42,34 +42,67 @@ export const operationalStatusToolOutputSchema = z.strictObject({
   usage: anthropicToolUsageSchema,
 });
 
+export const issueCategorySchema = z.enum(['mechanical', 'bodywork', 'interior', 'other']);
 const briefKnownIssueSchema = z.string().trim().min(1).max(300);
+const httpSourceSchema = z.strictObject({
+  title: z.string().trim().min(1),
+  url: z.string().trim().url().refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  }, 'Source URL must use HTTP or HTTPS'),
+});
 
-export const knownIssuesWebAnalysisSchema = z.strictObject({
-  mechanical: z.array(briefKnownIssueSchema),
-  bodywork: z.array(briefKnownIssueSchema),
-  interior: z.array(briefKnownIssueSchema),
-  other: z.array(briefKnownIssueSchema),
-  sources: z.array(z.strictObject({
-    title: z.string().trim().min(1),
-    url: z.string().trim().url().refine((value) => {
-      const protocol = new URL(value).protocol;
-      return protocol === 'http:' || protocol === 'https:';
-    }, 'Source URL must use HTTP or HTTPS'),
-  })),
-}).superRefine((value, context) => {
+function categorizedIssuesShape<T extends z.ZodType>(itemSchema: T) {
+  return {
+    mechanical: z.array(itemSchema),
+    bodywork: z.array(itemSchema),
+    interior: z.array(itemSchema),
+    other: z.array(itemSchema),
+  };
+}
+
+function validateUniqueCategorizedIssues<T>(
+  value: Record<'mechanical' | 'bodywork' | 'interior' | 'other', T[]>,
+  context: z.core.$RefinementCtx,
+  identity: (item: T) => string,
+) {
   const seen = new Set<string>();
-  for (const [category, issues] of Object.entries({
-    mechanical: value.mechanical, bodywork: value.bodywork,
-    interior: value.interior, other: value.other,
-  })) {
+  for (const category of ['mechanical', 'bodywork', 'interior', 'other'] as const) {
+    const issues = value[category];
     for (const issue of issues) {
-      const key = issue.toLocaleLowerCase('es');
+      const key = identity(issue).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('es');
       if (seen.has(key)) {
         context.addIssue({ code: 'custom', path: [category], message: 'Each issue must appear in one category only' });
       }
       seen.add(key);
     }
   }
+}
+
+export const knownIssuesWebAnalysisSchema = z.strictObject({
+  ...categorizedIssuesShape(briefKnownIssueSchema),
+  sources: z.array(httpSourceSchema),
+}).superRefine((value, context) => validateUniqueCategorizedIssues(value, context, (issue) => issue));
+
+const detectedIssueSchema = z.strictObject({
+  description: briefKnownIssueSchema,
+  evidence: z.array(z.string().min(1)).min(1),
+});
+
+export const extractedVehicleIssuesSchema = z.strictObject({
+  ...categorizedIssuesShape(detectedIssueSchema),
+}).superRefine((value, context) => validateUniqueCategorizedIssues(
+  value, context, (issue) => issue.description,
+));
+
+export const extractVehicleIssuesInputSchema = z.strictObject({
+  text: z.string().describe('Untrusted vehicle listing text to analyze'),
+});
+
+export const extractVehicleIssuesToolOutputSchema = z.strictObject({
+  issues: extractedVehicleIssuesSchema,
+  model: z.string().trim().min(1),
+  usage: anthropicToolUsageSchema.extend({ webSearchRequests: z.literal(0) }),
 });
 
 export const knownIssuesWebToolOutputSchema = z.strictObject({
@@ -82,6 +115,8 @@ export const issueAssessmentInputSchema = z.strictObject({
   issue: briefKnownIssueSchema,
   brand: z.string().trim().min(1).max(100),
   model: z.string().trim().min(1).max(100),
+  year: z.number().int().min(1886).max(2100).optional(),
+  evidence: z.array(z.string().min(1)).optional(),
 });
 
 export const issueSeverityAndCostAssessmentSchema = z.strictObject({
@@ -89,13 +124,7 @@ export const issueSeverityAndCostAssessmentSchema = z.strictObject({
   estimatedCostMinEUR: z.number().int().nonnegative(),
   estimatedCostMaxEUR: z.number().int().nonnegative(),
   reasoning: z.string().trim().min(1).max(1_000),
-  sources: z.array(z.strictObject({
-    title: z.string().trim().min(1),
-    url: z.string().trim().url().refine((value) => {
-      const protocol = new URL(value).protocol;
-      return protocol === 'http:' || protocol === 'https:';
-    }, 'Source URL must use HTTP or HTTPS'),
-  })).min(1),
+  sources: z.array(httpSourceSchema).min(1),
 }).refine(
   (value) => value.estimatedCostMaxEUR >= value.estimatedCostMinEUR,
   { path: ['estimatedCostMaxEUR'], message: 'Maximum cost must not be lower than minimum cost' },

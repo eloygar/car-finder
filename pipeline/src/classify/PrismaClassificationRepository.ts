@@ -6,6 +6,7 @@ import type {
   ClassificationRepository,
   ClassificationRunOptions,
   IssueAssessmentCandidate,
+  ListingIssueAssessmentCandidate,
 } from './types.js';
 import { issueKey } from '../../../shared/src/modelIssueAssessment.js';
 import {
@@ -29,6 +30,7 @@ export class PrismaClassificationRepository implements ClassificationRepository 
             { classifiedAt: null },
             { classificationVersion: null },
             { classificationVersion: { not: version } },
+            { listingIssueExtraction: { is: { issues: { some: { assessment: null } } } } },
           ],
         } : {}),
       },
@@ -61,6 +63,7 @@ export class PrismaClassificationRepository implements ClassificationRepository 
     version: string;
     classifiedAt: Date;
     researchedIssues?: Parameters<ClassificationRepository['saveClassification']>[0]['researchedIssues'];
+    listingExtraction?: Parameters<ClassificationRepository['saveClassification']>[0]['listingExtraction'];
   }): Promise<boolean> {
     try {
       await this.prisma.$transaction(async (transaction) => {
@@ -108,6 +111,28 @@ export class PrismaClassificationRepository implements ClassificationRepository 
             }))?.id ?? null;
           }
         }
+        if (options.listingExtraction) {
+          await transaction.listingIssueExtraction.deleteMany({
+            where: { listingId: options.candidate.id },
+          });
+          await transaction.listingIssueExtraction.create({
+            data: {
+              listingId: options.candidate.id,
+              inputHash: options.listingExtraction.inputHash,
+              anthropicModel: options.listingExtraction.anthropicModel,
+              analysisVersion: options.listingExtraction.analysisVersion,
+              extractedAt: options.classifiedAt,
+              issues: {
+                create: categorizedDetectedIssues(options.listingExtraction.issues).map((issue) => ({
+                  issueKey: issueKey(issue.description),
+                  category: issue.category,
+                  description: issue.description,
+                  evidence: issue.evidence,
+                })),
+              },
+            },
+          });
+        }
         const result = await transaction.listing.updateMany({
           where: {
             id: options.candidate.id,
@@ -129,6 +154,51 @@ export class PrismaClassificationRepository implements ClassificationRepository 
       if (error instanceof StaleListingError) return false;
       throw error;
     }
+  }
+
+  async findListingIssueExtraction(
+    candidate: ClassificationCandidate,
+    inputHash: string,
+  ): Promise<{ issueCount: number } | null> {
+    const extraction = await this.prisma.listingIssueExtraction.findFirst({
+      where: { listingId: candidate.id, inputHash },
+      select: { _count: { select: { issues: true } } },
+    });
+    return extraction ? { issueCount: extraction._count.issues } : null;
+  }
+
+  async findListingIssueAssessmentCandidates(
+    candidate: ClassificationCandidate,
+  ): Promise<ListingIssueAssessmentCandidate[]> {
+    const extraction = await this.prisma.listingIssueExtraction.findUnique({
+      where: { listingId: candidate.id },
+      select: {
+        issues: {
+          orderBy: [{ category: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            issueKey: true,
+            category: true,
+            description: true,
+            evidence: true,
+            assessment: { select: { id: true } },
+          },
+        },
+      },
+    });
+    const categoryOrder = { mechanical: 0, bodywork: 1, interior: 2, other: 3 } as Record<string, number>;
+    return extraction?.issues.sort((left, right) =>
+      (categoryOrder[left.category] ?? 4) - (categoryOrder[right.category] ?? 4),
+    ).map((issue) => ({
+      detectedIssueId: issue.id,
+      brand: candidate.brand,
+      model: candidate.model,
+      ...(candidate.year === null ? {} : { year: candidate.year }),
+      issue: issue.description,
+      issueKey: issue.issueKey,
+      evidence: issue.evidence,
+      cached: issue.assessment !== null,
+    })) ?? [];
   }
 
   async findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean> {
@@ -218,10 +288,39 @@ export class PrismaClassificationRepository implements ClassificationRepository 
       update: data,
     });
   }
+
+  async saveListingIssueAssessment(
+    options: Parameters<ClassificationRepository['saveListingIssueAssessment']>[0],
+  ): Promise<void> {
+    const data = {
+      severity: options.assessment.severity,
+      estimatedCostMinEUR: options.assessment.estimatedCostMinEUR,
+      estimatedCostMaxEUR: options.assessment.estimatedCostMaxEUR,
+      reasoning: options.assessment.reasoning,
+      sources: options.assessment.sources as unknown as Prisma.InputJsonValue,
+      pricingYear: options.pricingYear,
+      anthropicModel: options.anthropicModel,
+      analysisVersion: options.analysisVersion,
+      assessedAt: options.assessedAt,
+    };
+    await this.prisma.listingIssueAssessment.upsert({
+      where: { detectedIssueId: options.candidate.detectedIssueId },
+      create: { detectedIssueId: options.candidate.detectedIssueId, ...data },
+      update: data,
+    });
+  }
 }
 
 class StaleListingError extends Error {}
 
 function issueCount(analysis: NonNullable<Parameters<ClassificationRepository['saveClassification']>[0]['researchedIssues']>['analysis']) {
   return analysis.mechanical.length + analysis.bodywork.length + analysis.interior.length + analysis.other.length;
+}
+
+function categorizedDetectedIssues(
+  issues: NonNullable<Parameters<ClassificationRepository['saveClassification']>[0]['listingExtraction']>['issues'],
+) {
+  return (['mechanical', 'bodywork', 'interior', 'other'] as const).flatMap((category) =>
+    issues[category].map((issue) => ({ category, ...issue })),
+  );
 }

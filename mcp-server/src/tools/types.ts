@@ -48,12 +48,34 @@ export interface KnownIssuesWebToolResult {
   usage: AnthropicToolUsage;
 }
 
+export type IssueCategory = 'mechanical' | 'bodywork' | 'interior' | 'other';
+
+export interface ExtractedVehicleIssue {
+  description: string;
+  evidence: string[];
+}
+
+export interface ExtractedVehicleIssues {
+  mechanical: ExtractedVehicleIssue[];
+  bodywork: ExtractedVehicleIssue[];
+  interior: ExtractedVehicleIssue[];
+  other: ExtractedVehicleIssue[];
+}
+
+export interface ExtractVehicleIssuesToolResult {
+  issues: ExtractedVehicleIssues;
+  model: string;
+  usage: AnthropicToolUsage;
+}
+
 export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export interface IssueAssessmentQuery {
   issue: string;
   brand: string;
   model: string;
+  year?: number;
+  evidence?: string[];
 }
 
 export interface IssueSeverityAndCostAssessment {
@@ -74,6 +96,7 @@ export interface IssueSeverityAndCostToolResult {
 export interface VehicleAnalysisService {
   checkOperationalStatus(description: string): Promise<OperationalStatusToolResult>;
   checkKnownIssuesWeb(query: VehicleQuery): Promise<KnownIssuesWebToolResult>;
+  extractVehicleIssuesFromText(text: string): Promise<ExtractVehicleIssuesToolResult>;
   assessIssueSeverityAndCost(query: IssueAssessmentQuery): Promise<IssueSeverityAndCostToolResult>;
 }
 

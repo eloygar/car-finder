@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asKnownModelIssues, asListingClassification, asOperabilityClassification, matchesKnownIssuesFilter } from './classification.js';
+import { asKnownModelIssues, asListingClassification, asListingIssueExtraction, asOperabilityClassification, matchesKnownIssuesFilter } from './classification.js';
 
 const operability = {
   status: 'operational' as const, confidence: 'high' as const,
@@ -44,5 +44,24 @@ describe('classification UI model', () => {
       }],
     })).toBeNull();
     expect(matchesKnownIssuesFilter(null, 'found')).toBe(false);
+  });
+
+  it('validates current listing issue extraction and rejects unsafe assessment sources', () => {
+    const extraction = {
+      extractedAt: '2026-08-27T10:00:00Z',
+      issues: [{ category: 'bodywork', description: 'Golpe.', evidence: ['golpe'], assessment: null }],
+    };
+    expect(asListingIssueExtraction(extraction)).toEqual(extraction);
+    expect(asListingIssueExtraction({
+      ...extraction,
+      issues: [{
+        ...extraction.issues[0],
+        assessment: {
+          severity: 'low', estimatedCostMinEUR: 10, estimatedCostMaxEUR: 20,
+          reasoning: 'Daño leve.', pricingYear: 2026, assessedAt: '2026-08-27T10:00:00Z',
+          sources: [{ title: 'Unsafe', url: 'javascript:alert(1)' }],
+        },
+      }],
+    })).toBeNull();
   });
 });

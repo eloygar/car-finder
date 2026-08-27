@@ -24,7 +24,7 @@ async function connectedClient(repository: McpToolRepository, enableLegacyTools 
 }
 
 describe('createMcpServer', () => {
-  it('advertises the three AI analysis tools by default and returns structured content', async () => {
+  it('advertises the four AI analysis tools by default and returns structured content', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue(['1.00', '2.00', '3.00']),
@@ -34,6 +34,7 @@ describe('createMcpServer', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name)).toEqual([
       'check_operational_status',
+      'extract_vehicle_issues_from_text',
       'assess_issue_severity_and_cost',
       'check_known_issues_web',
     ]);
@@ -75,6 +76,7 @@ describe('createMcpServer', () => {
       'check_operational_status',
       'classify_vehicle_operability',
       'estimate_market_price',
+      'extract_vehicle_issues_from_text',
     ]);
   });
 
@@ -144,6 +146,11 @@ function analysisService(): VehicleAnalysisService {
       knownIssues: { mechanical: [], bodywork: [], interior: [], other: [], sources: [] },
       model: 'claude-haiku-4-5-20251001',
       usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
+    }),
+    extractVehicleIssuesFromText: vi.fn().mockResolvedValue({
+      issues: { mechanical: [], bodywork: [], interior: [], other: [] },
+      model: 'claude-haiku-4-5-20251001',
+      usage: { inputTokens: 8, outputTokens: 2, webSearchRequests: 0 },
     }),
     assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
       assessment: {

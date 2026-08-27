@@ -52,6 +52,23 @@ describe('listing facets classification filters', () => {
         knownModelIssuesId: issues?.id,
       } });
     }
+    const listing = await prisma.listing.findUniqueOrThrow({
+      where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
+    });
+    await prisma.listingIssueExtraction.create({ data: {
+      listingId: listing.id, inputHash: 'facet-listing-input', anthropicModel: 'test',
+      analysisVersion: 'v1-explicit-defects', extractedAt: new Date('2026-08-27T10:00:00Z'),
+      issues: { create: {
+        issueKey: issueKey('Tiene un golpe en la puerta.'), category: 'bodywork',
+        description: 'Tiene un golpe en la puerta.', evidence: ['golpe en puerta'],
+        assessment: { create: {
+          severity: 'low', estimatedCostMinEUR: 150, estimatedCostMaxEUR: 450,
+          reasoning: 'El daño de chapa es reparable.',
+          sources: [{ title: 'Taller de chapa', url: 'https://example.test/chapa' }],
+          pricingYear: 2026, anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
+        } },
+      } },
+    } });
   });
 
   afterAll(async () => {
@@ -91,6 +108,13 @@ describe('listing facets classification filters', () => {
       issueAssessments: [{
         issue: 'Fallo conocido.', category: 'mechanical',
         assessment: { severity: 'critical', estimatedCostMinEUR: 900, pricingYear: 2026 },
+      }],
+    });
+    expect(found.listingIssueExtraction).toMatchObject({
+      extractedAt: '2026-08-27T10:00:00.000Z',
+      issues: [{
+        category: 'bodywork', description: 'Tiene un golpe en la puerta.', evidence: ['golpe en puerta'],
+        assessment: { severity: 'low', estimatedCostMinEUR: 150, pricingYear: 2026 },
       }],
     });
   });

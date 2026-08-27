@@ -1,13 +1,15 @@
 import type { ListingClassification } from '../../../shared/src/classification/ListingClassification.js';
 
 import type {
+  ExtractedVehicleIssues,
   IssueSeverityAndCostAssessment,
   KnownIssuesWebAnalysis,
 } from '../../../mcp-server/src/tools/types.js';
 
-export const CLASSIFICATION_VERSION = 'v4-operability-model-issues';
+export const CLASSIFICATION_VERSION = 'v5-operability-listing-issues';
 export const KNOWN_MODEL_ISSUES_VERSION = 'v1-categorized';
 export const ISSUE_ASSESSMENT_VERSION = 'v1-spain-mixed-cost';
+export const LISTING_ISSUE_EXTRACTION_VERSION = 'v1-explicit-defects';
 
 export interface ClassificationRunOptions {
   all: boolean;
@@ -46,6 +48,11 @@ export interface ClassificationSummary {
   assessed: number;
   assessmentCached: number;
   assessmentFailed: number;
+  listingIssuesDetected: number;
+  listingAssessmentsSelected: number;
+  listingAssessed: number;
+  listingAssessmentCached: number;
+  listingAssessmentFailed: number;
   dryRun: boolean;
   version: string;
 }
@@ -53,9 +60,19 @@ export interface ClassificationSummary {
 export interface ClassificationRepository {
   findCandidates(options: ClassificationRunOptions, version: string): Promise<ClassificationCandidate[]>;
   findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean>;
+  findListingIssueExtraction(candidate: ClassificationCandidate, inputHash: string): Promise<{ issueCount: number } | null>;
   findIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<IssueAssessmentCandidate[]>;
+  findListingIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<ListingIssueAssessmentCandidate[]>;
   saveIssueAssessment(options: {
     candidate: IssueAssessmentCandidate;
+    assessment: IssueSeverityAndCostAssessment;
+    pricingYear: number;
+    anthropicModel: string;
+    analysisVersion: string;
+    assessedAt: Date;
+  }): Promise<void>;
+  saveListingIssueAssessment(options: {
+    candidate: ListingIssueAssessmentCandidate;
     assessment: IssueSeverityAndCostAssessment;
     pricingYear: number;
     anthropicModel: string;
@@ -69,6 +86,12 @@ export interface ClassificationRepository {
     classifiedAt: Date;
     researchedIssues?: {
       analysis: KnownIssuesWebAnalysis;
+      anthropicModel: string;
+      analysisVersion: string;
+    };
+    listingExtraction?: {
+      inputHash: string;
+      issues: ExtractedVehicleIssues;
       anthropicModel: string;
       analysisVersion: string;
     };
@@ -88,6 +111,13 @@ export interface KnownIssuesResearchResult {
   outputTokens: number;
 }
 
+export interface ListingIssueExtractionResult {
+  issues: ExtractedVehicleIssues;
+  anthropicModel: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface IssueAssessmentCandidate {
   vehicleModelId: string;
   brand: string;
@@ -96,6 +126,19 @@ export interface IssueAssessmentCandidate {
   issueKey: string;
   cached: boolean;
 }
+
+export interface ListingIssueAssessmentCandidate {
+  detectedIssueId: string;
+  brand: string;
+  model: string;
+  year?: number;
+  issue: string;
+  issueKey: string;
+  evidence: string[];
+  cached: boolean;
+}
+
+export type AssessableIssueCandidate = IssueAssessmentCandidate | ListingIssueAssessmentCandidate;
 
 export interface IssueAssessmentResult {
   assessment: IssueSeverityAndCostAssessment;
@@ -121,7 +164,8 @@ export class ClassificationAttemptError extends Error {
 export interface ListingClassifier {
   classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult>;
   researchKnownIssues(candidate: ClassificationCandidate): Promise<KnownIssuesResearchResult>;
-  assessIssueSeverityAndCost(candidate: IssueAssessmentCandidate): Promise<IssueAssessmentResult>;
+  extractListingIssues(candidate: ClassificationCandidate): Promise<ListingIssueExtractionResult>;
+  assessIssueSeverityAndCost(candidate: AssessableIssueCandidate): Promise<IssueAssessmentResult>;
 }
 
 export interface ClassifierSession {

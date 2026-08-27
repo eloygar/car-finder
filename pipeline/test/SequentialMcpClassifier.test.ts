@@ -9,6 +9,22 @@ const candidate: ClassificationCandidate = {
 };
 
 describe('SequentialMcpClassifier', () => {
+  it('extracts listing issues through the no-web MCP tool', async () => {
+    const callTool = vi.fn().mockResolvedValue({
+      issues: {
+        mechanical: [{ description: 'Pierde aceite.', evidence: ['pierde aceite'] }],
+        bodywork: [], interior: [], other: [],
+      },
+      model: 'claude-haiku-4-5-20251001',
+      usage: { inputTokens: 9, outputTokens: 3, webSearchRequests: 0 },
+    });
+    const classifier = await SequentialMcpClassifier.create({ mcp: { listTools: advertisedTools, callTool } });
+    await expect(classifier.extractListingIssues(candidate)).resolves.toMatchObject({
+      issues: { mechanical: [{ description: 'Pierde aceite.' }] }, inputTokens: 9, outputTokens: 3,
+    });
+    expect(callTool).toHaveBeenCalledWith('extract_vehicle_issues_from_text', { text: candidate.description });
+  });
+
   it('classifies operability independently', async () => {
     const callTool = vi.fn().mockResolvedValue({
       operability: { status: 'non_operational', confidence: 'high', evidence: ['no arranca'], reason: 'No arranca.' },
@@ -64,10 +80,28 @@ describe('SequentialMcpClassifier', () => {
     });
   });
 
-  it('requires both tools and rejects old web outputs', async () => {
+  it('passes year and evidence only for a listing-specific issue', async () => {
+    const callTool = vi.fn().mockResolvedValue({
+      assessment: {
+        severity: 'medium', estimatedCostMinEUR: 350, estimatedCostMaxEUR: 800,
+        reasoning: 'Coste probado.', sources: [{ title: 'Taller', url: 'https://example.test' }],
+      }, pricingYear: 2026, model: 'haiku',
+      usage: { inputTokens: 1, outputTokens: 1, webSearchRequests: 1 },
+    });
+    const classifier = await SequentialMcpClassifier.create({ mcp: { listTools: advertisedTools, callTool } });
+    await classifier.assessIssueSeverityAndCost({
+      detectedIssueId: 'detected-1', issue: 'Pierde aceite.', issueKey: 'key',
+      brand: 'Toyota', model: 'Corolla', year: 2019, evidence: ['pierde aceite'], cached: false,
+    });
+    expect(callTool).toHaveBeenCalledWith('assess_issue_severity_and_cost', {
+      issue: 'Pierde aceite.', brand: 'Toyota', model: 'Corolla', year: 2019, evidence: ['pierde aceite'],
+    });
+  });
+
+  it('requires all tools and rejects old web outputs', async () => {
     await expect(SequentialMcpClassifier.create({
       mcp: { listTools: async () => [{ name: 'check_operational_status' }], callTool: vi.fn() },
-    })).rejects.toThrow('Missing required MCP tool: check_known_issues_web');
+    })).rejects.toThrow('Missing required MCP tool: extract_vehicle_issues_from_text');
     const classifier = await SequentialMcpClassifier.create({
       mcp: { listTools: advertisedTools, callTool: vi.fn().mockResolvedValue({
         knownIssues: { found: true, summary: 'Formato antiguo.', sources: [] }, model: 'old',
@@ -81,6 +115,7 @@ describe('SequentialMcpClassifier', () => {
 async function advertisedTools() {
   return [
     { name: 'check_operational_status' },
+    { name: 'extract_vehicle_issues_from_text' },
     { name: 'check_known_issues_web' },
     { name: 'assess_issue_severity_and_cost' },
   ];

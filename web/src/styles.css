@@ -158,6 +158,8 @@ button, input, select { font: inherit; }
 .known-issues-none { color: #075c3b; background: #d9f7e8; border: 1px solid #9adab9; }
 .known-issues-skipped { color: var(--muted); background: var(--surface); border: 1px solid var(--line); }
 .known-issues-preview { min-width: 0; overflow: hidden; margin: 0; color: var(--muted); font-size: .7rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.listing-issues-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .45rem; padding-top: .38rem; border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
+.listing-issues-pill { display: inline-flex; width: max-content; align-items: center; border: 1px solid #a8c8e8; border-radius: 999px; padding: .18rem .5rem; color: #19558b; background: #eaf4ff; font-size: .64rem; font-weight: 820; white-space: nowrap; }
 
 .classification-details { display: grid; gap: .45rem; margin-bottom: 1rem; padding: .7rem .8rem; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 12px; background: var(--surface-soft); }
 .classification-details-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .55rem; }
@@ -169,6 +171,8 @@ button, input, select { font: inherit; }
 .evidence-list li { position: relative; padding-left: 1.05rem; font-size: .78rem; line-height: 1.45; color: var(--text); }
 .evidence-list li::before { content: ''; position: absolute; left: .3rem; top: .5rem; width: .32rem; height: .32rem; border-radius: 999px; background: var(--accent); }
 .known-issues-details { display: grid; gap: .4rem; padding-top: .55rem; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.listing-issues-details { display: grid; gap: .4rem; padding-top: .55rem; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.listing-issue-evidence { margin: .2rem 0 0; color: var(--muted); font-size: .7rem; line-height: 1.4; }
 .known-issues-details-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem; }
 .known-issues-disclaimer { margin: 0; color: var(--muted); font-size: .72rem; line-height: 1.45; }
 .known-issues-sources a { color: var(--accent); text-underline-offset: 2px; }
@@ -190,6 +194,7 @@ button, input, select { font: inherit; }
   .operability-operational { color: #a7f3d0; background: #123c2d; border: 1px solid #276749; }
   .known-issues-found { color: #fed7aa; background: #4a2913; border-color: #8c5428; }
   .known-issues-none { color: #a7f3d0; background: #123c2d; border-color: #276749; }
+  .listing-issues-pill { color: #bfdbfe; background: #173a5e; border-color: #315d87; }
   .severity-low { color: #a7f3d0; background: #123c2d; border-color: #276749; }
   .severity-medium { color: #fde68a; background: #453713; border-color: #7a6323; }
   .severity-high { color: #fed7aa; background: #4a2913; border-color: #8c5428; }

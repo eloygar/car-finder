@@ -16,6 +16,7 @@ function repository(): IssueAssessmentRepository {
 function classifier(): ListingClassifier {
   return {
     classifyOperability: vi.fn(), researchKnownIssues: vi.fn(),
+    extractListingIssues: vi.fn(),
     assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
       assessment: {
         severity: 'medium', estimatedCostMinEUR: 300, estimatedCostMaxEUR: 700,

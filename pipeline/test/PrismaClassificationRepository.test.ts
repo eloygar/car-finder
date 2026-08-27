@@ -24,6 +24,10 @@ function fakeClient(updateCount = 1) {
       findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({ id: 'issues-1' }),
     },
+    listingIssueExtraction: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi.fn().mockResolvedValue({ id: 'extraction-1' }),
+    },
   };
   const prisma = {
     listing,
@@ -42,7 +46,10 @@ describe('PrismaClassificationRepository', () => {
       { all: false, dryRun: false, force: false, refreshKnownIssues: false, limit: 7 }, 'v4',
     );
     expect(listing.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { status: 'active', OR: [{ classifiedAt: null }, { classificationVersion: null }, { classificationVersion: { not: 'v4' } }] },
+      where: { status: 'active', OR: [
+        { classifiedAt: null }, { classificationVersion: null }, { classificationVersion: { not: 'v4' } },
+        { listingIssueExtraction: { is: { issues: { some: { assessment: null } } } } },
+      ] },
       take: 7,
     }));
     expect(candidates[0]?.price).toBe('12345.60');
@@ -77,5 +84,31 @@ describe('PrismaClassificationRepository', () => {
     await expect(repository.saveClassification({
       candidate, classification, version: 'v4', classifiedAt: new Date(),
     })).resolves.toBe(false);
+  });
+
+  it('replaces the current extraction and its cascade-owned issues in the classification transaction', async () => {
+    const { prisma, tx } = fakeClient();
+    const repository = new PrismaClassificationRepository(prisma);
+    await repository.saveClassification({
+      candidate, classification, version: 'v5', classifiedAt: new Date('2026-08-27T12:00:00Z'),
+      listingExtraction: {
+        inputHash: 'input-hash', anthropicModel: 'haiku', analysisVersion: 'v1-explicit-defects',
+        issues: {
+          mechanical: [{ description: 'Pierde aceite.', evidence: ['pierde aceite'] }],
+          bodywork: [{ description: 'Tiene un golpe.', evidence: ['golpe'] }],
+          interior: [], other: [],
+        },
+      },
+    });
+    expect(tx.listingIssueExtraction.deleteMany).toHaveBeenCalledWith({ where: { listingId: 'db-1' } });
+    expect(tx.listingIssueExtraction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        listingId: 'db-1', inputHash: 'input-hash',
+        issues: { create: [
+          expect.objectContaining({ category: 'mechanical', description: 'Pierde aceite.' }),
+          expect.objectContaining({ category: 'bodywork', description: 'Tiene un golpe.' }),
+        ] },
+      }),
+    });
   });
 });

@@ -59,7 +59,17 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       const [items, count] = await Promise.all([
         prisma.listing.findMany({
           where,
-          include: { knownModelIssues: true },
+          include: {
+            knownModelIssues: true,
+            listingIssueExtraction: {
+              include: {
+                issues: {
+                  include: { assessment: true },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+            },
+          },
           orderBy: { firstSeenAt: 'desc' },
           ...(query.limit ? { take: Number(query.limit) } : {}),
         }),
@@ -83,10 +93,10 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
       }
       return reply.send({
         count,
-        items: items.map((item) => withIssueAssessments(
+        items: items.map((item) => withListingIssueExtraction(withIssueAssessments(
           item,
           item.knownModelIssues ? byVehicleModel.get(item.knownModelIssues.vehicleModelId) ?? [] : [],
-        )),
+        ))),
       });
     } finally {
       await prisma.$disconnect();
@@ -252,6 +262,40 @@ function publicAssessment(assessment: {
   if (!assessment) return null;
   const { issueKey: _issueKey, vehicleModelId: _vehicleModelId, ...result } = assessment;
   return result;
+}
+
+function withListingIssueExtraction<T extends {
+  listingIssueExtraction: null | {
+    extractedAt: Date;
+    issues: Array<{
+      category: string;
+      description: string;
+      evidence: string[];
+      assessment: null | {
+        severity: string;
+        estimatedCostMinEUR: number;
+        estimatedCostMaxEUR: number;
+        reasoning: string;
+        sources: unknown;
+        pricingYear: number;
+        assessedAt: Date;
+      };
+    }>;
+  };
+}>(item: T) {
+  if (!item.listingIssueExtraction) return item;
+  return {
+    ...item,
+    listingIssueExtraction: {
+      extractedAt: item.listingIssueExtraction.extractedAt,
+      issues: item.listingIssueExtraction.issues.map((issue) => ({
+        category: issue.category,
+        description: issue.description,
+        evidence: issue.evidence,
+        assessment: issue.assessment,
+      })),
+    },
+  };
 }
 
 function classifySearchFailure(error: unknown): { code: string; message: string } {

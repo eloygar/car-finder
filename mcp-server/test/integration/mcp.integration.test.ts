@@ -72,6 +72,7 @@ describe('MCP stdio server', () => {
       'check_operational_status',
       'classify_vehicle_operability',
       'estimate_market_price',
+      'extract_vehicle_issues_from_text',
     ]);
     const vehicleTools = listed.tools.filter(({ name }) => [
       'check_known_issues', 'check_known_issues_web', 'estimate_market_price',

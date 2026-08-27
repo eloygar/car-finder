@@ -7,6 +7,7 @@ import {
   DEFAULT_KNOWN_ISSUES_WEB_MODEL,
   DEFAULT_OPERATIONAL_STATUS_MODEL,
   DEFAULT_ISSUE_ASSESSMENT_MODEL,
+  DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL,
 } from './anthropic/AnthropicVehicleAnalysisService.js';
 import { createMcpServer } from './createServer.js';
 import { PrismaMcpToolRepository } from './db/PrismaMcpToolRepository.js';
@@ -27,6 +28,8 @@ async function main(): Promise<void> {
       process.env.OPERATIONAL_STATUS_MODEL ?? DEFAULT_OPERATIONAL_STATUS_MODEL,
       process.env.KNOWN_ISSUES_WEB_MODEL ?? DEFAULT_KNOWN_ISSUES_WEB_MODEL,
       process.env.ISSUE_ASSESSMENT_MODEL ?? DEFAULT_ISSUE_ASSESSMENT_MODEL,
+      undefined,
+      process.env.LISTING_ISSUE_EXTRACTION_MODEL ?? DEFAULT_LISTING_ISSUE_EXTRACTION_MODEL,
     ),
     ...(prisma ? { repository: new PrismaMcpToolRepository(prisma) } : {}),
     logger,

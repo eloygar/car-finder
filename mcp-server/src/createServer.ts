@@ -7,6 +7,8 @@ import { estimateMarketPrice } from './tools/estimateMarketPrice.js';
 import {
   checkKnownIssuesOutputSchema,
   estimateMarketPriceOutputSchema,
+  extractVehicleIssuesInputSchema,
+  extractVehicleIssuesToolOutputSchema,
   issueAssessmentInputSchema,
   issueSeverityAndCostToolOutputSchema,
   knownIssuesWebToolOutputSchema,
@@ -49,6 +51,25 @@ export function createMcpServer({
       } catch (error) {
         logToolFailure(logger, 'check_operational_status', error);
         return toolFailure('operational_status_failed', 'The vehicle operational status could not be determined.');
+      }
+    },
+  );
+
+  server.registerTool(
+    'extract_vehicle_issues_from_text',
+    {
+      title: 'Extract Vehicle Issues from Text',
+      description: 'Use Claude Haiku 4.5 without web access to extract defects explicitly declared in untrusted vehicle text.',
+      inputSchema: extractVehicleIssuesInputSchema,
+      outputSchema: extractVehicleIssuesToolOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ text }) => {
+      try {
+        return toolSuccess(await analysisService.extractVehicleIssuesFromText(text));
+      } catch (error) {
+        logToolFailure(logger, 'extract_vehicle_issues_from_text', error);
+        return toolFailure('listing_issue_extraction_failed', 'Vehicle issues could not be extracted from the supplied text.');
       }
     },
   );

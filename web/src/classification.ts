@@ -2,6 +2,7 @@ import type {
   ListingClassification,
   ListingRecord,
   KnownModelIssues,
+  ListingIssueExtraction,
   VehicleOperabilityClassification,
 } from './types.js';
 
@@ -57,12 +58,27 @@ export function asKnownModelIssues(value: unknown): KnownModelIssues | null {
   return value as unknown as KnownModelIssues;
 }
 
+export function asListingIssueExtraction(value: unknown): ListingIssueExtraction | null {
+  if (!isRecord(value)
+    || typeof value.extractedAt !== 'string'
+    || !Array.isArray(value.issues)
+    || !value.issues.every((issue) => isRecord(issue)
+      && isIssueCategory(issue.category)
+      && typeof issue.description === 'string'
+      && isStringArray(issue.evidence)
+      && (issue.assessment === null || isAssessment(issue.assessment)))) return null;
+  return value as unknown as ListingIssueExtraction;
+}
+
 function isIssueAssessmentEntry(value: unknown): boolean {
   if (!isRecord(value)
     || typeof value.issue !== 'string'
     || !isIssueCategory(value.category)) return false;
   if (value.assessment === null) return true;
-  const assessment = value.assessment;
+  return isAssessment(value.assessment);
+}
+
+function isAssessment(assessment: unknown): boolean {
   return isRecord(assessment)
     && isSeverity(assessment.severity)
     && typeof assessment.estimatedCostMinEUR === 'number'

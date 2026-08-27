@@ -38,13 +38,14 @@ model Listing {
   lastSeenAt  DateTime @default(now())
   rawPayload  Json?
 
-  classification        Json?             @db.JsonB
-  classificationVersion String?
-  classifiedAt          DateTime?
-  vehicleModelId        String?
-  knownModelIssuesId    String?
-  vehicleModel          VehicleModel?     @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
-  knownModelIssues      KnownModelIssues? @relation(fields: [knownModelIssuesId], references: [id], onDelete: SetNull)
+  classification         Json?                   @db.JsonB
+  classificationVersion  String?
+  classifiedAt           DateTime?
+  vehicleModelId         String?
+  knownModelIssuesId     String?
+  vehicleModel           VehicleModel?           @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
+  knownModelIssues       KnownModelIssues?       @relation(fields: [knownModelIssuesId], references: [id], onDelete: SetNull)
+  listingIssueExtraction ListingIssueExtraction?
 
   @@unique([provider, externalId])
   @@index([brand, model])
@@ -54,6 +55,60 @@ model Listing {
   @@index([status])
   @@index([vehicleModelId, year])
   @@index([knownModelIssuesId])
+}
+
+model ListingIssueExtraction {
+  id              String                 @id @default(uuid())
+  listingId       String                 @unique
+  inputHash       String
+  anthropicModel  String
+  analysisVersion String
+  extractedAt     DateTime
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  listing         Listing                @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  issues          ListingDetectedIssue[]
+
+  @@index([inputHash])
+  @@map("listing_issue_extractions")
+}
+
+model ListingDetectedIssue {
+  id           String                  @id @default(uuid())
+  extractionId String
+  issueKey     String
+  category     String
+  description  String
+  evidence     String[]
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  extraction   ListingIssueExtraction  @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  assessment   ListingIssueAssessment?
+
+  @@unique([extractionId, issueKey])
+  @@index([category])
+  @@map("listing_detected_issues")
+}
+
+model ListingIssueAssessment {
+  id                  String               @id @default(uuid())
+  detectedIssueId     String               @unique
+  severity            String
+  estimatedCostMinEUR Int
+  estimatedCostMaxEUR Int
+  reasoning           String
+  sources             Json                 @db.JsonB
+  pricingYear         Int
+  anthropicModel      String
+  analysisVersion     String
+  assessedAt          DateTime
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  detectedIssue       ListingDetectedIssue @relation(fields: [detectedIssueId], references: [id], onDelete: Cascade)
+
+  @@index([severity])
+  @@index([assessedAt])
+  @@map("listing_issue_assessments")
 }
 
 model VehicleModel {

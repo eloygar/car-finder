@@ -1,11 +1,13 @@
 # MCP groundwork
 
-The local MCP server exposes three analysis tools over stdio by default:
+The local MCP server exposes four analysis tools over stdio by default:
 
 - `check_operational_status` uses Claude Sonnet 5 without tools to decide whether the vehicle can
   start and move under its own power, using only evidence grounded in the seller description.
 - `check_known_issues_web` uses Claude Haiku 4.5 with Anthropic's native `web_search` tool to
   return documented model-year problems categorized as mechanical, bodywork, interior, or other.
+- `extract_vehicle_issues_from_text` uses Claude Haiku 4.5 without tools to extract defects explicitly
+  declared in listing text, preserving literal seller evidence.
 - `assess_issue_severity_and_cost` uses Claude Haiku 4.5 and mandatory web search to assess one
   issue's severity and an evidence-based current-year repair-cost range for Spain.
 
@@ -50,20 +52,27 @@ make assess-issues ISSUE_ASSESS_LIMIT=20
 ```
 
 `classify-dry` only queries PostgreSQL and never starts MCP or Anthropic. Live runs classify active
-listings without a classification or with a version older than `v4-operability-model-issues`. Operability is stored
+listings without a classification or with a version older than `v5-operability-listing-issues`. Operability is stored
 in the `classification` JSONB document with `classificationVersion` and `classifiedAt`. Model-year research is stored
 once in `known_model_issues` and linked to every matching listing. A second run
 skips current results unless `--force` is passed directly to `pipeline:classify`.
 
 Each listing follows a fixed sequence implemented by the pipeline, with no model acting as a tool
-orchestrator. The pipeline first invokes `check_operational_status`. A `non_operational` result is
-persisted without a web request. Both `operational` and `unknown` reuse cached model-year research,
+orchestrator. The pipeline invokes `check_operational_status`, then reuses or creates a description-hash
+extraction with `extract_vehicle_issues_from_text`. Empty descriptions are cached as completed empty
+extractions without calling Claude. A `non_operational` result is persisted without model-year web research.
+Both `operational` and `unknown` reuse cached model-year research,
 or invoke `check_known_issues_web` when no row exists. Listings without a year skip research. Use
 `--force --refresh-known-issues` to replace an existing model-year result. A changed `contentHash`
 rolls back the complete transaction, including provisional identities and research. Persisted reasoning
 and issue descriptions are written in Spanish; literal evidence excerpts keep the seller's language.
 
-After a listing and any new model-year issues are committed, missing issue assessments run independently.
+After a listing and any new model-year issues are committed, missing listing-specific assessments run first,
+then missing general model assessments run independently. Listing assessments are owned by their detected
+issue and are never shared with model-level results. A changed description, normalized brand/model, or year
+replaces the extraction and cascades its previous assessments; price changes do not invalidate extraction.
+Listings with a pending listing-specific assessment remain eligible for a normal classification run, so a
+failed cost lookup is retried while the matching extraction is reused.
 Successful results are cached permanently in `model_issue_assessments` by vehicle model and the SHA-256
 hash of normalized issue text. One failed assessment remains pending without rolling back the listing,
 known issues, or other successful assessments. `pipeline:assess-issues` backfills existing rows; add

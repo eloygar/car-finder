@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type {
   KnownModelIssues,
+  ListingIssueExtraction,
+  PublicIssueAssessment,
   IssueSeverity,
   ListingsResponse,
   ListingRecord,
@@ -20,6 +22,7 @@ import type {
 import {
   asListingClassification,
   asKnownModelIssues,
+  asListingIssueExtraction,
   asOperabilityClassification,
   matchesKnownIssuesFilter,
   type KnownIssuesFilter,
@@ -593,10 +596,11 @@ function ListingDetails({ item }: { item: ListingRecord }) {
 
 export function ClassificationSummary({ item }: { item: ListingRecord }) {
   const classification = asOperabilityClassification(item.classification);
-  const currentClassification = item.classificationVersion === 'v4-operability-model-issues'
+  const currentClassification = item.classificationVersion === 'v5-operability-listing-issues'
     ? asListingClassification(item.classification)
     : null;
   const knownIssues = asKnownModelIssues(item.knownModelIssues);
+  const listingIssues = asListingIssueExtraction(item.listingIssueExtraction);
 
   if (classification) {
     return (
@@ -619,6 +623,7 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
           <KnownIssuesBadge knownIssues={knownIssues} />
           {knownIssues?.hasIssues ? <AssessmentCardSummary knownIssues={knownIssues} /> : null}
         </div>
+        <ListingIssuesCardSummary extraction={listingIssues} />
       </div>
     );
   }
@@ -638,6 +643,7 @@ export function ClassificationSummary({ item }: { item: ListingRecord }) {
 export function ClassificationDetails({ item }: { item: ListingRecord }) {
   const classification = asOperabilityClassification(item.classification);
   const knownIssues = asKnownModelIssues(item.knownModelIssues);
+  const listingIssues = asListingIssueExtraction(item.listingIssueExtraction);
 
   if (classification) {
     return (
@@ -664,6 +670,7 @@ export function ClassificationDetails({ item }: { item: ListingRecord }) {
             </ul>
           </div>
         ) : null}
+        <ListingIssuesDetails extraction={listingIssues} />
         {knownIssues ? (
           <div className="known-issues-details">
             <div className="known-issues-details-head">
@@ -759,6 +766,95 @@ function KnownIssuesBadge({
   );
 }
 
+function ListingIssuesCardSummary({ extraction }: { extraction: ListingIssueExtraction | null }) {
+  if (!extraction) {
+    return <div className="listing-issues-summary"><span className="classification-pending">Anuncio sin analizar</span></div>;
+  }
+  const assessments = extraction.issues.map((issue) => issue.assessment).filter(Boolean);
+  const maximum = maximumSeverity(assessments);
+  const pending = extraction.issues.length - assessments.length;
+  const detail = [
+    maximum ? `Gravedad máxima: ${severityLabel(maximum)}` : null,
+    pending > 0 ? `${pending} pendiente${pending === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className="listing-issues-summary">
+      <span className="listing-issues-pill">
+        {extraction.issues.length === 0
+          ? 'Sin defectos declarados'
+          : `${extraction.issues.length} incidencia${extraction.issues.length === 1 ? '' : 's'} del anuncio`}
+      </span>
+      {extraction.issues.length > 0 ? <p className="known-issues-preview">{detail || 'Evaluadas'}</p> : null}
+    </div>
+  );
+}
+
+function ListingIssuesDetails({ extraction }: { extraction: ListingIssueExtraction | null }) {
+  return (
+    <div className="listing-issues-details">
+      <div className="known-issues-details-head">
+        <p className="evidence-title">Incidencias declaradas en el anuncio</p>
+        {!extraction ? <span className="classification-pending">Sin analizar</span> : null}
+      </div>
+      {!extraction ? (
+        <p className="classification-reason-full">El texto del anuncio todavía no se ha analizado.</p>
+      ) : extraction.issues.length === 0 ? (
+        <p className="classification-reason-full">Sin defectos declarados.</p>
+      ) : listingIssueCategories(extraction).map(({ label, issues }) => (
+        <div className="evidence" key={label}>
+          <p className="evidence-title">{label}</p>
+          <ul className="evidence-list issue-assessment-list">
+            {issues.map((issue) => (
+              <li key={`${issue.category}:${issue.description}`}>
+                <p className="issue-assessment-title">{issue.description}</p>
+                <p className="listing-issue-evidence">Evidencia: {issue.evidence.map((entry) => `“${entry}”`).join(' · ')}</p>
+                {issue.assessment ? <AssessmentDetails assessment={issue.assessment} /> : (
+                  <span className="assessment-pending">Evaluación pendiente</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <p className="known-issues-disclaimer">
+        Resultado inferido del texto del vendedor; no sustituye una inspección del vehículo.
+      </p>
+    </div>
+  );
+}
+
+function listingIssueCategories(extraction: ListingIssueExtraction) {
+  const labels = {
+    mechanical: 'Mecánica', bodywork: 'Carrocería', interior: 'Interior', other: 'Otros',
+  } as const;
+  return (Object.entries(labels) as Array<[keyof typeof labels, string]>)
+    .map(([category, label]) => ({
+      label,
+      issues: extraction.issues.filter((issue) => issue.category === category),
+    }))
+    .filter(({ issues }) => issues.length > 0);
+}
+
+function AssessmentDetails({ assessment }: { assessment: PublicIssueAssessment }) {
+  return (
+    <div className="issue-assessment-content">
+      <div className="issue-assessment-meta">
+        <span className={`severity-pill severity-${assessment.severity}`}>
+          {severityLabel(assessment.severity)}
+        </span>
+        <span>{formatCostRange(assessment.estimatedCostMinEUR, assessment.estimatedCostMaxEUR)}</span>
+        <span>Estimación {assessment.pricingYear}</span>
+      </div>
+      <p className="issue-assessment-reason">{assessment.reasoning}</p>
+      <ul className="issue-assessment-sources">
+        {assessment.sources.map((source) => (
+          <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a></li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function knownIssueCategories(knownIssues: KnownModelIssues) {
   const labels = {
     mechanical: 'Mecánica', bodywork: 'Carrocería', interior: 'Interior', other: 'Otros',
@@ -773,18 +869,22 @@ function knownIssueCategories(knownIssues: KnownModelIssues) {
 
 function AssessmentCardSummary({ knownIssues }: { knownIssues: KnownModelIssues }) {
   const assessments = knownIssues.issueAssessments.map((entry) => entry.assessment).filter(Boolean);
-  const maximum = assessments.reduce<IssueSeverity | null>((current, assessment) => {
-    if (!assessment) return current;
-    return !current || severityRank(assessment.severity) > severityRank(current)
-      ? assessment.severity
-      : current;
-  }, null);
+  const maximum = maximumSeverity(assessments);
   const pending = knownIssues.issueAssessments.length - assessments.length;
   const text = [
     maximum ? `Gravedad máxima: ${severityLabel(maximum)}` : null,
     pending > 0 ? `${pending} pendiente${pending === 1 ? '' : 's'}` : null,
   ].filter(Boolean).join(' · ');
   return <p className="known-issues-preview" title={text}>{text || 'Evaluadas'}</p>;
+}
+
+function maximumSeverity(assessments: Array<PublicIssueAssessment | null>): IssueSeverity | null {
+  return assessments.reduce<IssueSeverity | null>((current, assessment) => {
+    if (!assessment) return current;
+    return !current || severityRank(assessment.severity) > severityRank(current)
+      ? assessment.severity
+      : current;
+  }, null);
 }
 
 function severityRank(severity: IssueSeverity): number {

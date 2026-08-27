@@ -1,14 +1,16 @@
 import {
   knownIssuesWebToolOutputSchema,
+  extractVehicleIssuesToolOutputSchema,
   issueSeverityAndCostToolOutputSchema,
   operationalStatusToolOutputSchema,
 } from '../../../mcp-server/src/tools/schemas.js';
 import type {
   ClassificationCandidate,
-  IssueAssessmentCandidate,
+  AssessableIssueCandidate,
   IssueAssessmentResult,
   KnownIssuesResearchResult,
   ListingClassificationResult,
+  ListingIssueExtractionResult,
   ListingClassifier,
 } from './types.js';
 import { ClassificationAttemptError } from './types.js';
@@ -17,6 +19,7 @@ import type { BatchLogger } from '../search.js';
 const OPERATIONAL_STATUS_TOOL = 'check_operational_status';
 const KNOWN_ISSUES_WEB_TOOL = 'check_known_issues_web';
 const ISSUE_ASSESSMENT_TOOL = 'assess_issue_severity_and_cost';
+const LISTING_ISSUE_EXTRACTION_TOOL = 'extract_vehicle_issues_from_text';
 
 export interface ClassificationMcpBridge {
   listTools(): Promise<Array<{ name: string }>>;
@@ -34,10 +37,30 @@ export class SequentialMcpClassifier implements ListingClassifier {
     logger?: BatchLogger;
   }): Promise<SequentialMcpClassifier> {
     const advertised = new Set((await options.mcp.listTools()).map(({ name }) => name));
-    for (const tool of [OPERATIONAL_STATUS_TOOL, KNOWN_ISSUES_WEB_TOOL, ISSUE_ASSESSMENT_TOOL]) {
+    for (const tool of [OPERATIONAL_STATUS_TOOL, LISTING_ISSUE_EXTRACTION_TOOL, KNOWN_ISSUES_WEB_TOOL, ISSUE_ASSESSMENT_TOOL]) {
       if (!advertised.has(tool)) throw new Error(`Missing required MCP tool: ${tool}`);
     }
     return new SequentialMcpClassifier(options.mcp, options.logger);
+  }
+
+  async extractListingIssues(candidate: ClassificationCandidate): Promise<ListingIssueExtractionResult> {
+    try {
+      this.logInvocation(candidate.externalId, LISTING_ISSUE_EXTRACTION_TOOL);
+      const result = extractVehicleIssuesToolOutputSchema.parse(
+        await this.mcp.callTool(LISTING_ISSUE_EXTRACTION_TOOL, { text: candidate.description ?? '' }),
+      );
+      return {
+        issues: result.issues,
+        anthropicModel: result.model,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      };
+    } catch (error) {
+      throw new ClassificationAttemptError(
+        'Listing issue extraction failed', 0, 0,
+        classificationFailureCode(error), { cause: error },
+      );
+    }
   }
 
   async classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult> {
@@ -89,7 +112,7 @@ export class SequentialMcpClassifier implements ListingClassifier {
     }
   }
 
-  async assessIssueSeverityAndCost(candidate: IssueAssessmentCandidate): Promise<IssueAssessmentResult> {
+  async assessIssueSeverityAndCost(candidate: AssessableIssueCandidate): Promise<IssueAssessmentResult> {
     try {
       this.logInvocation(candidate.issueKey, ISSUE_ASSESSMENT_TOOL);
       const result = issueSeverityAndCostToolOutputSchema.parse(
@@ -97,6 +120,8 @@ export class SequentialMcpClassifier implements ListingClassifier {
           issue: candidate.issue,
           brand: candidate.brand,
           model: candidate.model,
+          ...('year' in candidate && candidate.year !== undefined ? { year: candidate.year } : {}),
+          ...('evidence' in candidate ? { evidence: candidate.evidence } : {}),
         }),
       );
       return {
