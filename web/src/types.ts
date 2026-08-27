@@ -112,6 +112,24 @@ export interface KnownModelIssues {
   sources: Array<{ title: string; url: string }>;
   hasIssues: boolean;
   researchedAt: string;
+  issueAssessments: KnownIssueAssessmentEntry[];
+}
+
+export type KnownIssueCategory = 'mechanical' | 'bodywork' | 'interior' | 'other';
+export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface KnownIssueAssessmentEntry {
+  issue: string;
+  category: KnownIssueCategory;
+  assessment: null | {
+    severity: IssueSeverity;
+    estimatedCostMinEUR: number;
+    estimatedCostMaxEUR: number;
+    reasoning: string;
+    sources: Array<{ title: string; url: string }>;
+    pricingYear: number;
+    assessedAt: string;
+  };
 }
 
 export interface ListingsResponse {

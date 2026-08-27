@@ -12,13 +12,40 @@ const issues: KnownModelIssues = {
   interior: ['Reinicio ocasional del infoentretenimiento.'], other: [], hasIssues: true,
   sources: [{ title: 'NHTSA recall', url: 'https://www.nhtsa.gov/recalls' }],
   researchedAt: '2026-08-27T10:00:00Z',
+  issueAssessments: [
+    {
+      issue: 'Fallo conocido de la bomba de agua.', category: 'mechanical',
+      assessment: {
+        severity: 'high', estimatedCostMinEUR: 800, estimatedCostMaxEUR: 1_500,
+        reasoning: 'Puede provocar sobrecalentamiento y daños graves.',
+        sources: [{ title: 'Taller español', url: 'https://example.test/taller' }],
+        pricingYear: 2026, assessedAt: '2026-08-27T10:00:00Z',
+      },
+    },
+    {
+      issue: 'Reinicio ocasional del infoentretenimiento.', category: 'interior', assessment: null,
+    },
+  ],
 };
 
 describe('listing classification presentation', () => {
+  it.each([
+    ['low', 'Baja'], ['medium', 'Media'], ['high', 'Alta'], ['critical', 'Crítica'],
+  ] as const)('renders %s severity as %s', (severity, label) => {
+    const assessed = {
+      ...issues,
+      issueAssessments: [{
+        ...issues.issueAssessments[0]!,
+        assessment: { ...issues.issueAssessments[0]!.assessment!, severity },
+      }],
+    };
+    expect(renderToStaticMarkup(<ClassificationDetails item={listing(assessed)} />)).toContain(label);
+  });
+
   it('renders found, none and pending badges', () => {
     expect(renderToStaticMarkup(<ClassificationSummary item={listing(issues)} />)).toContain('Problemas conocidos');
     expect(renderToStaticMarkup(<ClassificationSummary item={listing({
-      ...issues, hasIssues: false, mechanical: [], interior: [],
+      ...issues, hasIssues: false, mechanical: [], interior: [], issueAssessments: [],
     })} />)).toContain('Sin problemas conocidos');
     expect(renderToStaticMarkup(<ClassificationSummary item={listing(null)} />)).toContain('Sin investigar');
   });
@@ -30,6 +57,9 @@ describe('listing classification presentation', () => {
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noreferrer"');
     expect(html).toContain('modelo-año');
+    expect(html).toContain('Alta');
+    expect(html).toContain('800');
+    expect(html).toContain('Evaluación pendiente');
   });
 
   it('renders legacy and unclassified states', () => {

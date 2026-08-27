@@ -24,7 +24,7 @@ async function connectedClient(repository: McpToolRepository, enableLegacyTools 
 }
 
 describe('createMcpServer', () => {
-  it('advertises the two AI analysis tools by default and returns structured content', async () => {
+  it('advertises the three AI analysis tools by default and returns structured content', async () => {
     const repository: McpToolRepository = {
       findKnownIssues: vi.fn().mockResolvedValue([]),
       findComparablePrices: vi.fn().mockResolvedValue(['1.00', '2.00', '3.00']),
@@ -34,6 +34,7 @@ describe('createMcpServer', () => {
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name)).toEqual([
       'check_operational_status',
+      'assess_issue_severity_and_cost',
       'check_known_issues_web',
     ]);
     expect(listed.tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
@@ -68,6 +69,7 @@ describe('createMcpServer', () => {
     const { client } = await connectedClient(repository, true);
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
+      'assess_issue_severity_and_cost',
       'check_known_issues',
       'check_known_issues_web',
       'check_operational_status',
@@ -142,6 +144,16 @@ function analysisService(): VehicleAnalysisService {
       knownIssues: { mechanical: [], bodywork: [], interior: [], other: [], sources: [] },
       model: 'claude-haiku-4-5-20251001',
       usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
+    }),
+    assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
+      assessment: {
+        severity: 'medium', estimatedCostMinEUR: 400, estimatedCostMaxEUR: 900,
+        reasoning: 'La reparación requiere piezas y mano de obra.',
+        sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
+      },
+      pricingYear: 2026,
+      model: 'claude-haiku-4-5-20251001',
+      usage: { inputTokens: 30, outputTokens: 8, webSearchRequests: 1 },
     }),
   };
 }

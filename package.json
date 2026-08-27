@@ -8,6 +8,7 @@
     "pipeline:search": "tsx pipeline/src/search.ts",
     "pipeline:reconcile": "tsx pipeline/src/reconcile.ts",
     "pipeline:classify": "tsx pipeline/src/classify.ts",
+    "pipeline:assess-issues": "tsx pipeline/src/assessIssues.ts",
     "app:dev": "concurrently -k -n api,web -c blue,green \"pnpm api:dev\" \"pnpm web:dev\"",
     "app:start": "tsx api/src/server.ts",
     "api:dev": "tsx watch api/src/server.ts",

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPrismaClient, type DatabaseClient } from '../../../shared/src/db/client.js';
 import { createApp } from '../../src/app.js';
+import { issueKey } from '../../../shared/src/modelIssueAssessment.js';
 
 const brand = 'FacetIntegrationBrand';
 const externalIds = ['facet-integration-found', 'facet-integration-none', 'facet-integration-pending', 'facet-integration-legacy'];
@@ -25,6 +26,21 @@ describe('listing facets classification filters', () => {
         mechanical: index === 0 ? ['Fallo conocido.'] : [], bodywork: [], interior: [], other: [], sources: [],
         hasIssues: index === 0, analysisVersion: 'v1-categorized', anthropicModel: 'test', researchedAt: new Date(),
       } }) : null;
+      if (index === 0) {
+        await prisma.modelIssueAssessment.create({ data: {
+          vehicleModelId: model.id, issueKey: issueKey('Fallo conocido.'), issueText: 'Fallo conocido.',
+          severity: 'critical', estimatedCostMinEUR: 900, estimatedCostMaxEUR: 2_000,
+          reasoning: 'La incidencia requiere reparación inmediata.',
+          sources: [{ title: 'Taller', url: 'https://example.test/taller' }], pricingYear: 2026,
+          anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
+        } });
+        await prisma.modelIssueAssessment.create({ data: {
+          vehicleModelId: model.id, issueKey: issueKey('Incidencia eliminada.'), issueText: 'Incidencia eliminada.',
+          severity: 'low', estimatedCostMinEUR: 50, estimatedCostMaxEUR: 100,
+          reasoning: 'Evaluación histórica.', sources: [{ title: 'Taller', url: 'https://example.test/old' }],
+          pricingYear: 2025, anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
+        } });
+      }
       await prisma.listing.create({ data: {
         externalId, title: `Facet integration ${index}`, price: '10000.00', brand, model: `Model ${index}`,
         year: 2020, url: `https://example.test/${externalId}`, images: [], contentHash: externalId,
@@ -72,6 +88,10 @@ describe('listing facets classification filters', () => {
     expect(found.classification).toEqual({ operability: operability('operational') });
     expect(found.knownModelIssues).toMatchObject({
       mechanical: ['Fallo conocido.'], bodywork: [], interior: [], other: [], hasIssues: true,
+      issueAssessments: [{
+        issue: 'Fallo conocido.', category: 'mechanical',
+        assessment: { severity: 'critical', estimatedCostMinEUR: 900, pricingYear: 2026 },
+      }],
     });
   });
 });

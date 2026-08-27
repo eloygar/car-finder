@@ -12,6 +12,7 @@ import { runClassification } from './classify/runClassification.js';
 import type { ClassificationRunOptions } from './classify/types.js';
 import {
   DEFAULT_KNOWN_ISSUES_WEB_MODEL,
+  DEFAULT_ISSUE_ASSESSMENT_MODEL,
   DEFAULT_OPERATIONAL_STATUS_MODEL,
 } from '../../mcp-server/src/anthropic/AnthropicVehicleAnalysisService.js';
 
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
     }
     const operationalStatusModel = process.env.OPERATIONAL_STATUS_MODEL ?? DEFAULT_OPERATIONAL_STATUS_MODEL;
     const knownIssuesWebModel = process.env.KNOWN_ISSUES_WEB_MODEL ?? DEFAULT_KNOWN_ISSUES_WEB_MODEL;
+    const issueAssessmentModel = process.env.ISSUE_ASSESSMENT_MODEL ?? DEFAULT_ISSUE_ASSESSMENT_MODEL;
     prisma = createPrismaClient();
     const summary = await runClassification({
       run,
@@ -90,8 +92,9 @@ async function main(): Promise<void> {
       ...summary,
       operationalStatusModel: run.dryRun ? undefined : operationalStatusModel,
       knownIssuesWebModel: run.dryRun ? undefined : knownIssuesWebModel,
+      issueAssessmentModel: run.dryRun ? undefined : issueAssessmentModel,
     }, 'Classification run completed');
-    if (summary.failed > 0) process.exitCode = 1;
+    if (summary.failed > 0 || summary.assessmentFailed > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof HelpRequested) {
       process.stdout.write(`${usage()}\n`);

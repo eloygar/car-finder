@@ -56,6 +56,60 @@ describe('AnthropicVehicleAnalysisService', () => {
       usage: { inputTokens: 11, outputTokens: 3, webSearchRequests: 1 },
     });
   });
+
+  it('always searches the web for current Spanish repair costs', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      severity: 'high', evidenceSufficient: true,
+      estimatedCostMinEUR: 800, estimatedCostMaxEUR: 1_600,
+      reasoning: 'El fallo puede inmovilizar el vehículo y la reparación incluye piezas y mano de obra.',
+      sources: [{ title: 'Tarifa de taller', url: 'https://example.test/taller' }],
+    }, { web_search_requests: 1 }));
+    const service = new AnthropicVehicleAnalysisService(
+      { create }, undefined, undefined, undefined,
+      () => new Date('2026-08-27T12:00:00Z'),
+    );
+
+    const result = await service.assessIssueSeverityAndCost({
+      issue: 'Fallo grave del sistema de frenos.', brand: 'Toyota', model: 'Corolla',
+    });
+
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      model: 'claude-haiku-4-5-20251001',
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+    });
+    expect(String(create.mock.calls[0]?.[0].system)).toContain('always use web_search');
+    expect(String(create.mock.calls[0]?.[0].messages[0]?.content)).toContain('Pricing year: 2026');
+    expect(result).toMatchObject({
+      assessment: { severity: 'high', estimatedCostMinEUR: 800 },
+      pricingYear: 2026,
+      usage: { webSearchRequests: 1 },
+    });
+  });
+
+  it('rejects an assessment that did not execute web search', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      severity: 'low', evidenceSufficient: true,
+      estimatedCostMinEUR: 50, estimatedCostMaxEUR: 100,
+      reasoning: 'La incidencia es menor.',
+      sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
+    }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+    await expect(service.assessIssueSeverityAndCost({
+      issue: 'Moldura suelta.', brand: 'Toyota', model: 'Corolla',
+    })).rejects.toThrow('requires web search evidence');
+  });
+
+  it('rejects insufficient price evidence instead of caching an invented range', async () => {
+    const create = vi.fn().mockResolvedValue(message({
+      severity: 'medium', evidenceSufficient: false,
+      estimatedCostMinEUR: 0, estimatedCostMaxEUR: 0,
+      reasoning: 'No se encontraron precios suficientes.', sources: [],
+    }, { web_search_requests: 1 }));
+    const service = new AnthropicVehicleAnalysisService({ create });
+    await expect(service.assessIssueSeverityAndCost({
+      issue: 'Problema poco documentado.', brand: 'Marca', model: 'Modelo',
+    })).rejects.toThrow('evidence was insufficient');
+  });
 });
 
 function message(value: unknown, serverToolUse?: { web_search_requests: number }): Message {

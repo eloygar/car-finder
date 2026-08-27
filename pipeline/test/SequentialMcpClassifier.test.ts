@@ -41,6 +41,29 @@ describe('SequentialMcpClassifier', () => {
     });
   });
 
+  it('assesses one issue through the dedicated MCP tool', async () => {
+    const callTool = vi.fn().mockResolvedValue({
+      assessment: {
+        severity: 'medium', estimatedCostMinEUR: 350, estimatedCostMaxEUR: 800,
+        reasoning: 'La reparación requiere sustituir el componente.',
+        sources: [{ title: 'Taller', url: 'https://example.test/taller' }],
+      },
+      pricingYear: 2026, model: 'claude-haiku-4-5-20251001',
+      usage: { inputTokens: 22, outputTokens: 7, webSearchRequests: 1 },
+    });
+    const classifier = await SequentialMcpClassifier.create({ mcp: { listTools: advertisedTools, callTool } });
+    const issue = {
+      vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla', issue: 'Fallo de bomba.',
+      issueKey: 'key-1', cached: false,
+    };
+    await expect(classifier.assessIssueSeverityAndCost(issue)).resolves.toMatchObject({
+      assessment: { severity: 'medium' }, pricingYear: 2026, inputTokens: 22, outputTokens: 7,
+    });
+    expect(callTool).toHaveBeenCalledWith('assess_issue_severity_and_cost', {
+      issue: 'Fallo de bomba.', brand: 'Toyota', model: 'Corolla',
+    });
+  });
+
   it('requires both tools and rejects old web outputs', async () => {
     await expect(SequentialMcpClassifier.create({
       mcp: { listTools: async () => [{ name: 'check_operational_status' }], callTool: vi.fn() },
@@ -56,5 +79,9 @@ describe('SequentialMcpClassifier', () => {
 });
 
 async function advertisedTools() {
-  return [{ name: 'check_operational_status' }, { name: 'check_known_issues_web' }];
+  return [
+    { name: 'check_operational_status' },
+    { name: 'check_known_issues_web' },
+    { name: 'assess_issue_severity_and_cost' },
+  ];
 }

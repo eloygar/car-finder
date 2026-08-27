@@ -5,7 +5,9 @@ import type {
   ClassificationCandidate,
   ClassificationRepository,
   ClassificationRunOptions,
+  IssueAssessmentCandidate,
 } from './types.js';
+import { issueKey } from '../../../shared/src/modelIssueAssessment.js';
 import {
   resolveVehicleModelIdentity,
   vehicleModelIdentityUpdate,
@@ -146,6 +148,75 @@ export class PrismaClassificationRepository implements ClassificationRepository 
     return (await this.prisma.knownModelIssues.count({
       where: { vehicleModelId: vehicleModel.id, year: candidate.year },
     })) > 0;
+  }
+
+  async findIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<IssueAssessmentCandidate[]> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: candidate.id },
+      select: {
+        vehicleModel: {
+          select: {
+            id: true,
+            brand: true,
+            model: true,
+            issueAssessments: { select: { issueKey: true } },
+          },
+        },
+        knownModelIssues: {
+          select: { mechanical: true, bodywork: true, interior: true, other: true },
+        },
+      },
+    });
+    if (!listing?.vehicleModel || !listing.knownModelIssues) return [];
+    const cached = new Set(listing.vehicleModel.issueAssessments.map((entry) => entry.issueKey));
+    const issues = [
+      ...listing.knownModelIssues.mechanical,
+      ...listing.knownModelIssues.bodywork,
+      ...listing.knownModelIssues.interior,
+      ...listing.knownModelIssues.other,
+    ];
+    return issues.map((issue) => {
+      const key = issueKey(issue);
+      return {
+        vehicleModelId: listing.vehicleModel!.id,
+        brand: listing.vehicleModel!.brand,
+        model: listing.vehicleModel!.model,
+        issue,
+        issueKey: key,
+        cached: cached.has(key),
+      };
+    });
+  }
+
+  async saveIssueAssessment(
+    options: Parameters<ClassificationRepository['saveIssueAssessment']>[0],
+  ): Promise<void> {
+    const data = {
+      issueText: options.candidate.issue,
+      severity: options.assessment.severity,
+      estimatedCostMinEUR: options.assessment.estimatedCostMinEUR,
+      estimatedCostMaxEUR: options.assessment.estimatedCostMaxEUR,
+      reasoning: options.assessment.reasoning,
+      sources: options.assessment.sources as unknown as Prisma.InputJsonValue,
+      pricingYear: options.pricingYear,
+      anthropicModel: options.anthropicModel,
+      analysisVersion: options.analysisVersion,
+      assessedAt: options.assessedAt,
+    };
+    await this.prisma.modelIssueAssessment.upsert({
+      where: {
+        vehicleModelId_issueKey: {
+          vehicleModelId: options.candidate.vehicleModelId,
+          issueKey: options.candidate.issueKey,
+        },
+      },
+      create: {
+        vehicleModelId: options.candidate.vehicleModelId,
+        issueKey: options.candidate.issueKey,
+        ...data,
+      },
+      update: data,
+    });
   }
 }
 

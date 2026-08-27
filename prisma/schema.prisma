@@ -57,8 +57,8 @@ model Listing {
 }
 
 model VehicleModel {
-  id                    String             @id @default(uuid())
-  source                String             @default("wallapop")
+  id                    String                 @id @default(uuid())
+  source                String                 @default("wallapop")
   brand                 String
   model                 String
   normalizedBrand       String
@@ -66,15 +66,40 @@ model VehicleModel {
   taxonomyStatus        String
   taxonomySchemaVersion Int?
   taxonomyCapturedAt    DateTime?
-  active                Boolean            @default(true)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  active                Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   listings              Listing[]
   knownIssues           KnownModelIssues[]
+  issueAssessments      ModelIssueAssessment[]
 
   @@unique([source, normalizedBrand, normalizedModel])
   @@index([brand, model])
   @@map("vehicle_models")
+}
+
+model ModelIssueAssessment {
+  id                  String       @id @default(uuid())
+  vehicleModelId      String
+  issueKey            String
+  issueText           String
+  severity            String
+  estimatedCostMinEUR Int
+  estimatedCostMaxEUR Int
+  reasoning           String
+  sources             Json         @db.JsonB
+  pricingYear         Int
+  anthropicModel      String
+  analysisVersion     String
+  assessedAt          DateTime
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  vehicleModel        VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleModelId, issueKey])
+  @@index([severity])
+  @@index([assessedAt])
+  @@map("model_issue_assessments")
 }
 
 model KnownModelIssues {

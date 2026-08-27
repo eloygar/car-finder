@@ -48,9 +48,33 @@ export interface KnownIssuesWebToolResult {
   usage: AnthropicToolUsage;
 }
 
+export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface IssueAssessmentQuery {
+  issue: string;
+  brand: string;
+  model: string;
+}
+
+export interface IssueSeverityAndCostAssessment {
+  severity: IssueSeverity;
+  estimatedCostMinEUR: number;
+  estimatedCostMaxEUR: number;
+  reasoning: string;
+  sources: KnownIssuesWebSource[];
+}
+
+export interface IssueSeverityAndCostToolResult {
+  assessment: IssueSeverityAndCostAssessment;
+  pricingYear: number;
+  model: string;
+  usage: AnthropicToolUsage;
+}
+
 export interface VehicleAnalysisService {
   checkOperationalStatus(description: string): Promise<OperationalStatusToolResult>;
   checkKnownIssuesWeb(query: VehicleQuery): Promise<KnownIssuesWebToolResult>;
+  assessIssueSeverityAndCost(query: IssueAssessmentQuery): Promise<IssueSeverityAndCostToolResult>;
 }
 
 export type KnownIssueSeverity = 'low' | 'medium' | 'high' | 'unknown';

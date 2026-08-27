@@ -9,6 +9,7 @@ import { CLASSIFICATION_VERSION } from './types.js';
 import { ClassificationAttemptError } from './types.js';
 import { parseListingClassification } from '../../../shared/src/classification/ListingClassification.js';
 import { KNOWN_MODEL_ISSUES_VERSION } from './types.js';
+import { ISSUE_ASSESSMENT_VERSION } from './types.js';
 import { normalizeTaxonomyLabel } from '../../../shared/src/vehicleTaxonomy.js';
 
 export async function runClassification(options: {
@@ -26,6 +27,10 @@ export async function runClassification(options: {
     stale: 0,
     inputTokens: 0,
     outputTokens: 0,
+    assessmentsSelected: 0,
+    assessed: 0,
+    assessmentCached: 0,
+    assessmentFailed: 0,
     dryRun: options.run.dryRun,
     version: CLASSIFICATION_VERSION,
   };
@@ -34,6 +39,7 @@ export async function runClassification(options: {
 
   const session = await options.createSession();
   const refreshedModelYears = new Set<string>();
+  const visitedAssessments = new Set<string>();
   try {
     for (const candidate of candidates) {
       try {
@@ -67,6 +73,55 @@ export async function runClassification(options: {
           summary.classified += 1;
           if (researchedIssues && candidate.year !== null) {
             refreshedModelYears.add(modelYearKey(candidate.brand, candidate.model, candidate.year));
+          }
+          let issueCandidates;
+          try {
+            issueCandidates = await options.repository.findIssueAssessmentCandidates(candidate);
+          } catch (error) {
+            summary.assessmentFailed += 1;
+            options.logger.error({
+              externalId: candidate.externalId,
+              errorType: error instanceof Error ? error.name : typeof error,
+            }, 'Known issue assessment candidates could not be loaded');
+            continue;
+          }
+          for (const assessmentCandidate of issueCandidates) {
+            const key = `${assessmentCandidate.vehicleModelId}\u0000${assessmentCandidate.issueKey}`;
+            if (visitedAssessments.has(key)) continue;
+            visitedAssessments.add(key);
+            summary.assessmentsSelected += 1;
+            if (assessmentCandidate.cached) {
+              summary.assessmentCached += 1;
+              continue;
+            }
+            try {
+              const assessment = await session.classifier.assessIssueSeverityAndCost(assessmentCandidate);
+              summary.inputTokens += assessment.inputTokens;
+              summary.outputTokens += assessment.outputTokens;
+              await options.repository.saveIssueAssessment({
+                candidate: assessmentCandidate,
+                assessment: assessment.assessment,
+                pricingYear: assessment.pricingYear,
+                anthropicModel: assessment.anthropicModel,
+                analysisVersion: ISSUE_ASSESSMENT_VERSION,
+                assessedAt: options.now?.() ?? new Date(),
+              });
+              summary.assessed += 1;
+            } catch (error) {
+              if (error instanceof ClassificationAttemptError) {
+                summary.inputTokens += error.inputTokens;
+                summary.outputTokens += error.outputTokens;
+              }
+              summary.assessmentFailed += 1;
+              options.logger.error({
+                externalId: candidate.externalId,
+                issueKey: assessmentCandidate.issueKey,
+                errorType: error instanceof Error ? error.name : typeof error,
+                failureCode: error instanceof ClassificationAttemptError
+                  ? error.failureCode
+                  : 'unexpected_error',
+              }, 'Known issue assessment failed');
+            }
           }
         }
         else summary.stale += 1;

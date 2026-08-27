@@ -32,6 +32,10 @@ const anthropicToolUsageSchema = z.strictObject({
   webSearchRequests: z.number().int().nonnegative(),
 });
 
+const webAnthropicToolUsageSchema = anthropicToolUsageSchema.extend({
+  webSearchRequests: z.number().int().min(1),
+});
+
 export const operationalStatusToolOutputSchema = z.strictObject({
   operability: vehicleOperabilityOutputSchema,
   model: z.string(),
@@ -72,6 +76,36 @@ export const knownIssuesWebToolOutputSchema = z.strictObject({
   knownIssues: knownIssuesWebAnalysisSchema,
   model: z.string(),
   usage: anthropicToolUsageSchema,
+});
+
+export const issueAssessmentInputSchema = z.strictObject({
+  issue: briefKnownIssueSchema,
+  brand: z.string().trim().min(1).max(100),
+  model: z.string().trim().min(1).max(100),
+});
+
+export const issueSeverityAndCostAssessmentSchema = z.strictObject({
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
+  estimatedCostMinEUR: z.number().int().nonnegative(),
+  estimatedCostMaxEUR: z.number().int().nonnegative(),
+  reasoning: z.string().trim().min(1).max(1_000),
+  sources: z.array(z.strictObject({
+    title: z.string().trim().min(1),
+    url: z.string().trim().url().refine((value) => {
+      const protocol = new URL(value).protocol;
+      return protocol === 'http:' || protocol === 'https:';
+    }, 'Source URL must use HTTP or HTTPS'),
+  })).min(1),
+}).refine(
+  (value) => value.estimatedCostMaxEUR >= value.estimatedCostMinEUR,
+  { path: ['estimatedCostMaxEUR'], message: 'Maximum cost must not be lower than minimum cost' },
+);
+
+export const issueSeverityAndCostToolOutputSchema = z.strictObject({
+  assessment: issueSeverityAndCostAssessmentSchema,
+  pricingYear: z.number().int().min(2000).max(2100),
+  model: z.string().trim().min(1),
+  usage: webAnthropicToolUsageSchema,
 });
 
 const nullableYear = z.number().int().nullable();

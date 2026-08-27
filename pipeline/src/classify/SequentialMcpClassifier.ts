@@ -1,9 +1,12 @@
 import {
   knownIssuesWebToolOutputSchema,
+  issueSeverityAndCostToolOutputSchema,
   operationalStatusToolOutputSchema,
 } from '../../../mcp-server/src/tools/schemas.js';
 import type {
   ClassificationCandidate,
+  IssueAssessmentCandidate,
+  IssueAssessmentResult,
   KnownIssuesResearchResult,
   ListingClassificationResult,
   ListingClassifier,
@@ -13,6 +16,7 @@ import type { BatchLogger } from '../search.js';
 
 const OPERATIONAL_STATUS_TOOL = 'check_operational_status';
 const KNOWN_ISSUES_WEB_TOOL = 'check_known_issues_web';
+const ISSUE_ASSESSMENT_TOOL = 'assess_issue_severity_and_cost';
 
 export interface ClassificationMcpBridge {
   listTools(): Promise<Array<{ name: string }>>;
@@ -30,7 +34,7 @@ export class SequentialMcpClassifier implements ListingClassifier {
     logger?: BatchLogger;
   }): Promise<SequentialMcpClassifier> {
     const advertised = new Set((await options.mcp.listTools()).map(({ name }) => name));
-    for (const tool of [OPERATIONAL_STATUS_TOOL, KNOWN_ISSUES_WEB_TOOL]) {
+    for (const tool of [OPERATIONAL_STATUS_TOOL, KNOWN_ISSUES_WEB_TOOL, ISSUE_ASSESSMENT_TOOL]) {
       if (!advertised.has(tool)) throw new Error(`Missing required MCP tool: ${tool}`);
     }
     return new SequentialMcpClassifier(options.mcp, options.logger);
@@ -80,6 +84,31 @@ export class SequentialMcpClassifier implements ListingClassifier {
     } catch (error) {
       throw new ClassificationAttemptError(
         'Known model issues research failed', 0, 0,
+        classificationFailureCode(error), { cause: error },
+      );
+    }
+  }
+
+  async assessIssueSeverityAndCost(candidate: IssueAssessmentCandidate): Promise<IssueAssessmentResult> {
+    try {
+      this.logInvocation(candidate.issueKey, ISSUE_ASSESSMENT_TOOL);
+      const result = issueSeverityAndCostToolOutputSchema.parse(
+        await this.mcp.callTool(ISSUE_ASSESSMENT_TOOL, {
+          issue: candidate.issue,
+          brand: candidate.brand,
+          model: candidate.model,
+        }),
+      );
+      return {
+        assessment: result.assessment,
+        pricingYear: result.pricingYear,
+        anthropicModel: result.model,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      };
+    } catch (error) {
+      throw new ClassificationAttemptError(
+        'Known issue severity and cost assessment failed', 0, 0,
         classificationFailureCode(error), { cause: error },
       );
     }

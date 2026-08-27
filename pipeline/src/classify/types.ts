@@ -1,9 +1,13 @@
 import type { ListingClassification } from '../../../shared/src/classification/ListingClassification.js';
 
-import type { KnownIssuesWebAnalysis } from '../../../mcp-server/src/tools/types.js';
+import type {
+  IssueSeverityAndCostAssessment,
+  KnownIssuesWebAnalysis,
+} from '../../../mcp-server/src/tools/types.js';
 
 export const CLASSIFICATION_VERSION = 'v4-operability-model-issues';
 export const KNOWN_MODEL_ISSUES_VERSION = 'v1-categorized';
+export const ISSUE_ASSESSMENT_VERSION = 'v1-spain-mixed-cost';
 
 export interface ClassificationRunOptions {
   all: boolean;
@@ -38,6 +42,10 @@ export interface ClassificationSummary {
   stale: number;
   inputTokens: number;
   outputTokens: number;
+  assessmentsSelected: number;
+  assessed: number;
+  assessmentCached: number;
+  assessmentFailed: number;
   dryRun: boolean;
   version: string;
 }
@@ -45,6 +53,15 @@ export interface ClassificationSummary {
 export interface ClassificationRepository {
   findCandidates(options: ClassificationRunOptions, version: string): Promise<ClassificationCandidate[]>;
   findKnownModelIssues(candidate: ClassificationCandidate): Promise<boolean>;
+  findIssueAssessmentCandidates(candidate: ClassificationCandidate): Promise<IssueAssessmentCandidate[]>;
+  saveIssueAssessment(options: {
+    candidate: IssueAssessmentCandidate;
+    assessment: IssueSeverityAndCostAssessment;
+    pricingYear: number;
+    anthropicModel: string;
+    analysisVersion: string;
+    assessedAt: Date;
+  }): Promise<void>;
   saveClassification(options: {
     candidate: ClassificationCandidate;
     classification: ListingClassification;
@@ -71,6 +88,23 @@ export interface KnownIssuesResearchResult {
   outputTokens: number;
 }
 
+export interface IssueAssessmentCandidate {
+  vehicleModelId: string;
+  brand: string;
+  model: string;
+  issue: string;
+  issueKey: string;
+  cached: boolean;
+}
+
+export interface IssueAssessmentResult {
+  assessment: IssueSeverityAndCostAssessment;
+  pricingYear: number;
+  anthropicModel: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export class ClassificationAttemptError extends Error {
   constructor(
     message: string,
@@ -87,6 +121,7 @@ export class ClassificationAttemptError extends Error {
 export interface ListingClassifier {
   classifyOperability(candidate: ClassificationCandidate): Promise<ListingClassificationResult>;
   researchKnownIssues(candidate: ClassificationCandidate): Promise<KnownIssuesResearchResult>;
+  assessIssueSeverityAndCost(candidate: IssueAssessmentCandidate): Promise<IssueAssessmentResult>;
 }
 
 export interface ClassifierSession {

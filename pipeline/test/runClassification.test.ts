@@ -20,6 +20,8 @@ function repository(cached = false, saved = true): ClassificationRepository {
   return {
     findCandidates: vi.fn().mockResolvedValue([candidate]),
     findKnownModelIssues: vi.fn().mockResolvedValue(cached),
+    findIssueAssessmentCandidates: vi.fn().mockResolvedValue([]),
+    saveIssueAssessment: vi.fn().mockResolvedValue(undefined),
     saveClassification: vi.fn().mockResolvedValue(saved),
   };
 }
@@ -29,6 +31,13 @@ function classifier(): ListingClassifier {
     classifyOperability: vi.fn().mockResolvedValue({ operability, inputTokens: 10, outputTokens: 2 }),
     researchKnownIssues: vi.fn().mockResolvedValue({
       analysis, anthropicModel: 'claude-haiku', inputTokens: 20, outputTokens: 4,
+    }),
+    assessIssueSeverityAndCost: vi.fn().mockResolvedValue({
+      assessment: {
+        severity: 'medium', estimatedCostMinEUR: 300, estimatedCostMaxEUR: 700,
+        reasoning: 'Coste documentado.', sources: [{ title: 'Taller', url: 'https://example.test' }],
+      },
+      pricingYear: 2026, anthropicModel: 'claude-haiku', inputTokens: 5, outputTokens: 2,
     }),
   };
 }
@@ -110,5 +119,40 @@ describe('runClassification', () => {
     });
     expect(summary).toMatchObject({ failed: 1, classified: 0, inputTokens: 19, outputTokens: 6 });
     expect(repo.saveClassification).not.toHaveBeenCalled();
+  });
+
+  it('keeps classification and successful assessments when another assessment fails', async () => {
+    const repo = repository(true);
+    vi.mocked(repo.findIssueAssessmentCandidates).mockResolvedValue([
+      { vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla', issue: 'Cached', issueKey: 'cached', cached: true },
+      { vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla', issue: 'Success', issueKey: 'success', cached: false },
+      { vehicleModelId: 'model-1', brand: 'Toyota', model: 'Corolla', issue: 'Failure', issueKey: 'failure', cached: false },
+    ]);
+    const service = classifier();
+    vi.mocked(service.assessIssueSeverityAndCost)
+      .mockResolvedValueOnce({
+        assessment: {
+          severity: 'high', estimatedCostMinEUR: 800, estimatedCostMaxEUR: 1_600,
+          reasoning: 'Reparación documentada.', sources: [{ title: 'Taller', url: 'https://example.test' }],
+        },
+        pricingYear: 2026, anthropicModel: 'claude-haiku', inputTokens: 6, outputTokens: 3,
+      })
+      .mockRejectedValueOnce(new ClassificationAttemptError('failed', 2, 1, 'mcp_issue_assessment_failed'));
+
+    const summary = await runClassification({
+      run, repository: repo, logger,
+      createSession: async () => ({ classifier: service, close: vi.fn() }),
+    });
+
+    expect(summary).toMatchObject({
+      classified: 1, failed: 0, assessmentsSelected: 3, assessed: 1,
+      assessmentCached: 1, assessmentFailed: 1, inputTokens: 18, outputTokens: 6,
+    });
+    expect(repo.saveClassification).toHaveBeenCalledOnce();
+    expect(repo.saveIssueAssessment).toHaveBeenCalledOnce();
+    expect(repo.saveIssueAssessment).toHaveBeenCalledWith(expect.objectContaining({
+      candidate: expect.objectContaining({ issueKey: 'success' }),
+      analysisVersion: 'v1-spain-mixed-cost',
+    }));
   });
 });

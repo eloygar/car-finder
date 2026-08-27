@@ -1,11 +1,13 @@
 # MCP groundwork
 
-The local MCP server exposes two classification tools over stdio by default:
+The local MCP server exposes three analysis tools over stdio by default:
 
 - `check_operational_status` uses Claude Sonnet 5 without tools to decide whether the vehicle can
   start and move under its own power, using only evidence grounded in the seller description.
 - `check_known_issues_web` uses Claude Haiku 4.5 with Anthropic's native `web_search` tool to
   return documented model-year problems categorized as mechanical, bodywork, interior, or other.
+- `assess_issue_severity_and_cost` uses Claude Haiku 4.5 and mandatory web search to assess one
+  issue's severity and an evidence-based current-year repair-cost range for Spain.
 
 The previous `classify_vehicle_operability`, `check_known_issues`, and `estimate_market_price`
 tools are disabled by default. Set
@@ -43,6 +45,8 @@ make classify-dry
 make classify CLASSIFY_LIMIT=10
 make classify-one CLASSIFY_ID=<wallapop-external-id>
 make classify-all
+make assess-issues-dry
+make assess-issues ISSUE_ASSESS_LIMIT=20
 ```
 
 `classify-dry` only queries PostgreSQL and never starts MCP or Anthropic. Live runs classify active
@@ -58,6 +62,13 @@ or invoke `check_known_issues_web` when no row exists. Listings without a year s
 `--force --refresh-known-issues` to replace an existing model-year result. A changed `contentHash`
 rolls back the complete transaction, including provisional identities and research. Persisted reasoning
 and issue descriptions are written in Spanish; literal evidence excerpts keep the seller's language.
+
+After a listing and any new model-year issues are committed, missing issue assessments run independently.
+Successful results are cached permanently in `model_issue_assessments` by vehicle model and the SHA-256
+hash of normalized issue text. One failed assessment remains pending without rolling back the listing,
+known issues, or other successful assessments. `pipeline:assess-issues` backfills existing rows; add
+`--force` to replace cached assessments, oldest first. Cached costs retain their original `pricingYear`
+and do not expire automatically.
 
 Live commands can incur Anthropic charges. Start with `make classify-one` and inspect the structured
 summary, including aggregate input/output token counts, before running `make classify-all`.

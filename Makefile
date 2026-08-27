@@ -7,13 +7,14 @@ MODEL ?= Corolla
 DESCRIPTION ?= Funciona perfectamente y se usa a diario.
 CLASSIFY_LIMIT ?= 10
 CLASSIFY_ID ?=
+ISSUE_ASSESS_LIMIT ?= 20
 
 .DEFAULT_GOAL := help
 
 .PHONY: help install setup check test test-integration typecheck \
 	db-up db-down db-migrate db-seed db-sync-taxonomy search search-one \
 	reconcile reconcile-dry mcp-server mcp-smoke app app-build app-start \
-	classify classify-all classify-one classify-dry
+	classify classify-all classify-one classify-dry assess-issues assess-issues-dry
 
 help:
 	@echo "Car Finder development commands"
@@ -28,6 +29,8 @@ help:
 	@echo "  make classify-all      Classify every pending or outdated active listing"
 	@echo "  make classify-one      Classify one listing (CLASSIFY_ID)"
 	@echo "  make classify-dry      Count all pending listings without paid calls"
+	@echo "  make assess-issues     Assess pending known issues (ISSUE_ASSESS_LIMIT)"
+	@echo "  make assess-issues-dry Count pending issue assessments without paid calls"
 	@echo "  make mcp-smoke         Call the operational-status MCP tool (DESCRIPTION)"
 	@echo "  make mcp-server        Start the MCP stdio server"
 	@echo "  make app               Start the local search UI and API"
@@ -93,6 +96,12 @@ classify-one:
 
 classify-dry:
 	$(PNPM) pipeline:classify -- --all --dry-run
+
+assess-issues:
+	$(PNPM) pipeline:assess-issues -- --limit $(ISSUE_ASSESS_LIMIT)
+
+assess-issues-dry:
+	$(PNPM) pipeline:assess-issues -- --all --dry-run
 
 mcp-server:
 	$(PNPM) mcp:server

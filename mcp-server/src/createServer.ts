@@ -7,6 +7,8 @@ import { estimateMarketPrice } from './tools/estimateMarketPrice.js';
 import {
   checkKnownIssuesOutputSchema,
   estimateMarketPriceOutputSchema,
+  issueAssessmentInputSchema,
+  issueSeverityAndCostToolOutputSchema,
   knownIssuesWebToolOutputSchema,
   knownIssuesWebQuerySchema,
   operationalStatusInputSchema,
@@ -47,6 +49,25 @@ export function createMcpServer({
       } catch (error) {
         logToolFailure(logger, 'check_operational_status', error);
         return toolFailure('operational_status_failed', 'The vehicle operational status could not be determined.');
+      }
+    },
+  );
+
+  server.registerTool(
+    'assess_issue_severity_and_cost',
+    {
+      title: 'Assess Known Issue Severity and Repair Cost',
+      description: 'Use Claude Haiku 4.5 and native web search to assess severity and current repair costs in Spain.',
+      inputSchema: issueAssessmentInputSchema,
+      outputSchema: issueSeverityAndCostToolOutputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (query) => {
+      try {
+        return toolSuccess(await analysisService.assessIssueSeverityAndCost(query));
+      } catch (error) {
+        logToolFailure(logger, 'assess_issue_severity_and_cost', error);
+        return toolFailure('issue_assessment_failed', 'Issue severity and repair cost could not be assessed.');
       }
     },
   );

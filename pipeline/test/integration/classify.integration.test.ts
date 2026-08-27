@@ -77,6 +77,16 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
         },
         model: 'claude-haiku-4-5-20251001',
         usage: { inputTokens: 12, outputTokens: 6, webSearchRequests: 1 },
+      })
+      .mockResolvedValueOnce({
+        assessment: {
+          severity: 'high', estimatedCostMinEUR: 700, estimatedCostMaxEUR: 1_400,
+          reasoning: 'La reparación puede requerir sustituir un componente importante.',
+          sources: [{ title: 'Spanish workshop', url: 'https://example.com/workshop' }],
+        },
+        pricingYear: 2026,
+        model: 'claude-haiku-4-5-20251001',
+        usage: { inputTokens: 15, outputTokens: 7, webSearchRequests: 1 },
       });
 
     const summary = await runClassification({
@@ -88,6 +98,7 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
           mcp: {
             listTools: async () => [
               { name: 'check_operational_status' }, { name: 'check_known_issues_web' },
+              { name: 'assess_issue_severity_and_cost' },
             ],
             callTool,
           },
@@ -96,9 +107,12 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       },
     });
 
-    expect(summary).toMatchObject({ selected: 1, classified: 1, failed: 0, stale: 0 });
+    expect(summary).toMatchObject({
+      selected: 1, classified: 1, failed: 0, stale: 0,
+      assessmentsSelected: 1, assessed: 1, assessmentFailed: 0,
+    });
     expect(callTool.mock.calls.map(([name]) => name)).toEqual([
-      'check_operational_status', 'check_known_issues_web',
+      'check_operational_status', 'check_known_issues_web', 'assess_issue_severity_and_cost',
     ]);
     const stored = await prisma.listing.findUniqueOrThrow({
       where: { provider_externalId: { provider: 'wallapop', externalId: externalIds[0]! } },
@@ -114,6 +128,10 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
       where: { id: stored.knownModelIssuesId! },
     });
     expect(relationalIssues).toMatchObject({ mechanical: ['Fallo conocido de integración.'], hasIssues: true });
+    const assessment = await prisma.modelIssueAssessment.findFirstOrThrow({
+      where: { vehicleModelId: relationalIssues.vehicleModelId },
+    });
+    expect(assessment).toMatchObject({ severity: 'high', estimatedCostMinEUR: 700, pricingYear: 2026 });
 
     const second = await runClassification({
       run: { all: false, dryRun: true, force: false, refreshKnownIssues: false, only: externalIds[0] },
@@ -148,5 +166,30 @@ describe('classification with real PostgreSQL and MCP stdio', () => {
     expect(await prisma.vehicleModel.findFirst({
       where: { normalizedBrand: 'atomicintegrationbrand' },
     })).toBeNull();
+  });
+
+  it('deduplicates concurrent assessment upserts at the database boundary', async () => {
+    const model = await prisma.vehicleModel.findFirstOrThrow({
+      where: { normalizedBrand: 'integrationbrand', normalizedModel: 'integrationmodel' },
+    });
+    const repository = new PrismaClassificationRepository(prisma);
+    const candidate = {
+      vehicleModelId: model.id, brand: model.brand, model: model.model,
+      issue: 'Incidencia concurrente.', issueKey: 'concurrent-assessment-key', cached: false,
+    };
+    const result = {
+      candidate,
+      assessment: {
+        severity: 'medium' as const, estimatedCostMinEUR: 300, estimatedCostMaxEUR: 700,
+        reasoning: 'Estimación concurrente.', sources: [{ title: 'Taller', url: 'https://example.test' }],
+      },
+      pricingYear: 2026, anthropicModel: 'test', analysisVersion: 'v1', assessedAt: new Date(),
+    };
+    await Promise.all([
+      repository.saveIssueAssessment(result), repository.saveIssueAssessment(result),
+    ]);
+    expect(await prisma.modelIssueAssessment.count({
+      where: { vehicleModelId: model.id, issueKey: candidate.issueKey },
+    })).toBe(1);
   });
 });

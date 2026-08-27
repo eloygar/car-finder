@@ -51,8 +51,37 @@ export function asKnownModelIssues(value: unknown): KnownModelIssues | null {
     || !isStringArray(value.interior)
     || !isStringArray(value.other)
     || !Array.isArray(value.sources)
-    || !value.sources.every(isSource)) return null;
+    || !value.sources.every(isSource)
+    || !Array.isArray(value.issueAssessments)
+    || !value.issueAssessments.every(isIssueAssessmentEntry)) return null;
   return value as unknown as KnownModelIssues;
+}
+
+function isIssueAssessmentEntry(value: unknown): boolean {
+  if (!isRecord(value)
+    || typeof value.issue !== 'string'
+    || !isIssueCategory(value.category)) return false;
+  if (value.assessment === null) return true;
+  const assessment = value.assessment;
+  return isRecord(assessment)
+    && isSeverity(assessment.severity)
+    && typeof assessment.estimatedCostMinEUR === 'number'
+    && typeof assessment.estimatedCostMaxEUR === 'number'
+    && assessment.estimatedCostMinEUR >= 0
+    && assessment.estimatedCostMaxEUR >= assessment.estimatedCostMinEUR
+    && typeof assessment.reasoning === 'string'
+    && typeof assessment.pricingYear === 'number'
+    && typeof assessment.assessedAt === 'string'
+    && Array.isArray(assessment.sources)
+    && assessment.sources.every(isSource);
+}
+
+function isIssueCategory(value: unknown): boolean {
+  return value === 'mechanical' || value === 'bodywork' || value === 'interior' || value === 'other';
+}
+
+function isSeverity(value: unknown): boolean {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
 }
 
 function isStringArray(value: unknown): value is string[] {

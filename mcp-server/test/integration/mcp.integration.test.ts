@@ -66,6 +66,7 @@ describe('MCP stdio server', () => {
 
     const listed = await client.listTools();
     expect(listed.tools.map(({ name }) => name).sort()).toEqual([
+      'assess_issue_severity_and_cost',
       'check_known_issues',
       'check_known_issues_web',
       'check_operational_status',

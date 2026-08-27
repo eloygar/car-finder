@@ -1,7 +1,11 @@
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-const EXPECTED_TOOLS = ['check_operational_status', 'check_known_issues_web'] as const;
+const EXPECTED_TOOLS = [
+  'assess_issue_severity_and_cost',
+  'check_operational_status',
+  'check_known_issues_web',
+] as const;
 
 export interface SmokeResult {
   tools: string[];
