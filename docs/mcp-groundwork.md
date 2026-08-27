@@ -50,10 +50,12 @@ in the `classification` JSONB document with `classificationVersion` and `classif
 skips current results unless `--force` is passed directly to `pipeline:classify`.
 
 Each listing follows a fixed sequence implemented by the pipeline, with no model acting as a tool
-orchestrator. The pipeline first invokes `check_operational_status`. `non_operational` and `unknown`
-results are persisted immediately with `knownIssuesWeb.status=skipped`; no web request is made.
-Only an `operational` result invokes `check_known_issues_web` with the listing's brand, model, and
-optional year. A changed `contentHash` prevents an old in-flight result from being saved.
+orchestrator. The pipeline first invokes `check_operational_status`. A `non_operational` result is
+persisted immediately with `knownIssuesWeb.status=skipped`; no web request is made. Both
+`operational` and `unknown` optimistically invoke `check_known_issues_web` with the listing's brand,
+model, and optional year. A changed `contentHash` prevents an old in-flight result from being saved.
+Persisted reasoning is written in Spanish: `operability.reason` and
+`knownIssuesWeb.summary`. Literal evidence excerpts keep the seller's original language.
 
 Live commands can incur Anthropic charges. Start with `make classify-one` and inspect the structured
 summary, including aggregate input/output token counts, before running `make classify-all`.

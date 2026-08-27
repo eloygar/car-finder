@@ -7,7 +7,7 @@ describe('AnthropicVehicleAnalysisService', () => {
   it('uses Sonnet 5 without tools and grounds operability in the description', async () => {
     const create = vi.fn().mockResolvedValue(message({
       status: 'operational', confidence: 'high',
-      evidence: ['Funciona perfectamente'], reason: 'The seller says it works.',
+      evidence: ['Funciona perfectamente'], reason: 'El vendedor afirma que funciona.',
     }));
     const service = new AnthropicVehicleAnalysisService({ create });
 
@@ -19,6 +19,7 @@ describe('AnthropicVehicleAnalysisService', () => {
       output_config: { format: { type: 'json_schema' } },
     });
     expect(request).not.toHaveProperty('tools');
+    expect(String(request.system)).toContain('Always write the reason in Spanish');
     expect(result).toMatchObject({
       operability: { status: 'operational' },
       usage: { inputTokens: 11, outputTokens: 3, webSearchRequests: 0 },
@@ -28,7 +29,7 @@ describe('AnthropicVehicleAnalysisService', () => {
   it('uses Haiku 4.5 with native web_search and returns a one-paragraph summary', async () => {
     const create = vi.fn().mockResolvedValue(message({
       found: true,
-      summary: 'The model has a documented recall affecting one of its control modules.',
+      summary: 'El modelo tiene una llamada a revisión documentada que afecta a uno de sus módulos de control.',
       sources: [{ title: 'Official recall', url: 'https://example.test/recall' }],
     }, { web_search_requests: 1 }));
     const service = new AnthropicVehicleAnalysisService({ create });
@@ -39,6 +40,16 @@ describe('AnthropicVehicleAnalysisService', () => {
       model: 'claude-haiku-4-5-20251001',
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
     });
+    const system = String(create.mock.calls[0]?.[0].system);
+    expect(system).toContain('https://www.km77.com/');
+    expect(system).toContain('https://www.consumerreports.org/cars/car-reliability-owner-satisfaction/');
+    expect(system).toContain('https://www.nhtsa.gov/recalls');
+    expect(system).toContain('https://www.adac.de/');
+    expect(system).toContain('https://www.tuev-nord.de/');
+    expect(system).toContain('https://www.carcomplaints.com/');
+    expect(system).toContain('https://www.reddit.com/r/AskMechanics/');
+    expect(system).toContain('not ranked');
+    expect(system).toContain('Always write the summary in Spanish');
     expect(result).toMatchObject({
       knownIssues: { found: true },
       usage: { inputTokens: 11, outputTokens: 3, webSearchRequests: 1 },

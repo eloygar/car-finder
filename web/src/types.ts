@@ -106,7 +106,7 @@ export interface ListingClassification {
         summary: string;
         sources: Array<{ title: string; url: string }>;
       }
-    | { status: 'skipped'; reason: 'non_operational' | 'unknown' };
+    | { status: 'skipped'; reason: 'non_operational' };
 }
 
 export interface ListingsResponse {

@@ -11,7 +11,7 @@ export const vehicleOperabilitySubmissionSchema = z.strictObject({
   status: z.enum(['operational', 'non_operational', 'unknown']),
   confidence: z.enum(['low', 'medium', 'high']),
   evidence: z.array(z.string().trim().min(1)).describe('Short literal excerpts from description'),
-  reason: z.string().trim().min(1).describe('Brief explanation grounded only in description'),
+  reason: z.string().trim().min(1).describe('Brief explanation in Spanish, grounded only in the description'),
 });
 
 export const vehicleOperabilityOutputSchema = vehicleOperabilitySubmissionSchema.omit({
@@ -36,7 +36,7 @@ export const operationalStatusToolOutputSchema = z.strictObject({
 
 export const knownIssuesWebAnalysisSchema = z.strictObject({
   found: z.boolean(),
-  summary: z.string().trim().min(1),
+  summary: z.string().trim().min(1).describe('One-paragraph summary in Spanish'),
   sources: z.array(z.strictObject({
     title: z.string().trim().min(1),
     url: z.string().trim().min(1),

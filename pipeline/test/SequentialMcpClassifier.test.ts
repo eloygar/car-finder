@@ -44,7 +44,7 @@ describe('SequentialMcpClassifier', () => {
     });
   });
 
-  it('calls web issues second only when the vehicle is operational', async () => {
+  it('calls web issues second when the vehicle is operational', async () => {
     const callTool = vi.fn()
       .mockResolvedValueOnce({
         operability: {
@@ -77,6 +77,37 @@ describe('SequentialMcpClassifier', () => {
       classification: { knownIssuesWeb: { status: 'completed', found: true } },
       inputTokens: 30,
       outputTokens: 6,
+    });
+  });
+
+  it('optimistically calls web issues when operability is unknown', async () => {
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        operability: {
+          status: 'unknown', confidence: 'low', evidence: [],
+          reason: 'The description does not establish operability.',
+        },
+        model: 'claude-sonnet-5', usage,
+      })
+      .mockResolvedValueOnce({
+        knownIssues: {
+          found: false, summary: 'No documented model-level issue was found.', sources: [],
+        },
+        model: 'claude-haiku-4-5-20251001',
+        usage: { inputTokens: 20, outputTokens: 4, webSearchRequests: 1 },
+      });
+    const classifier = await SequentialMcpClassifier.create({
+      mcp: { listTools: advertisedTools, callTool },
+    });
+
+    const result = await classifier.classify(candidate);
+
+    expect(callTool.mock.calls.map(([name]) => name)).toEqual([
+      'check_operational_status', 'check_known_issues_web',
+    ]);
+    expect(result.classification).toMatchObject({
+      operability: { status: 'unknown' },
+      knownIssuesWeb: { status: 'completed' },
     });
   });
 

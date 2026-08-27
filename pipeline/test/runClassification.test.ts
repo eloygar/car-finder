@@ -16,7 +16,12 @@ const classification = {
     evidence: [],
     reason: 'The description does not establish operability.',
   },
-  knownIssuesWeb: { status: 'skipped' as const, reason: 'unknown' as const },
+  knownIssuesWeb: {
+    status: 'completed' as const,
+    found: false,
+    summary: 'No documented model-level issues found.',
+    sources: [],
+  },
 };
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 

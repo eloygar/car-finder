@@ -19,7 +19,7 @@ const knownIssuesCompletedSchema = z.strictObject({
 
 const knownIssuesSkippedSchema = z.strictObject({
   status: z.literal('skipped'),
-  reason: z.enum(['non_operational', 'unknown']),
+  reason: z.literal('non_operational'),
 });
 
 /** Versioned v3 result produced by the deterministic two-stage MCP pipeline. */

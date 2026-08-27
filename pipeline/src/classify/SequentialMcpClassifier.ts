@@ -53,7 +53,7 @@ export class SequentialMcpClassifier implements ListingClassifier {
       inputTokens += operationalResult.usage.inputTokens;
       outputTokens += operationalResult.usage.outputTokens;
 
-      if (operationalResult.operability.status !== 'operational') {
+      if (operationalResult.operability.status === 'non_operational') {
         return {
           classification: parseListingClassification({
             operability: operationalResult.operability,

@@ -98,7 +98,7 @@ describe('createMcpServer', () => {
       status: 'unknown',
       confidence: 'low',
       evidence: [],
-      reason: 'No literal evidence from the description supports a definitive operability status.',
+      reason: 'No hay evidencia literal en la descripción que permita determinar de forma concluyente si el vehículo está operativo.',
     });
     expect(repository.findKnownIssues).not.toHaveBeenCalled();
   });

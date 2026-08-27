@@ -693,7 +693,7 @@ function asListingClassification(value: ListingRecord['classification']): Listin
   const status = Reflect.get(knownIssuesWeb, 'status');
   if (status === 'skipped') {
     const reason = Reflect.get(knownIssuesWeb, 'reason');
-    if (reason !== 'non_operational' && reason !== 'unknown') return null;
+    if (reason !== 'non_operational') return null;
   } else if (status === 'completed') {
     if (
       typeof Reflect.get(knownIssuesWeb, 'found') !== 'boolean'
